@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Персональное бюджетирование</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%234CAF50' width='100' height='100' rx='15'/><text x='50' y='75' font-size='70' text-anchor='middle' fill='white' font-family='Arial'>€</text></svg>">
     <style>
         * {
             box-sizing: border-box;
@@ -529,30 +530,26 @@
                 
                 <div class="sections">
                     <div class="section">
-                        <h3>Параметры бюджета</h3>
-                        <div class="form-group">
-                            <label for="income-euro">Доход (€):</label>
-                            <input type="number" id="income-euro" placeholder="Введите сумму в евро" min="0" step="0.01">
-                        </div>
-                        <div class="form-group">
-                            <label for="tax-rate">Ставка налога (%):</label>
-                            <input type="number" id="tax-rate" value="7.30" step="0.01" min="0" max="100">
-                        </div>
-                        <button onclick="updateSettings()">Сохранить настройки</button>
-                    </div>
-                    
-                    <div class="section">
                         <h3>Лимиты</h3>
                         <div class="form-group">
                             <label for="limit-fop">Лимит ФОП (€):</label>
-                            <input type="number" id="limit-fop" value="2200" min="0" step="0.01">
+                            <input type="number" id="limit-fop" value="2200" min="0" step="0.01" onchange="updateLimitsAndRecalculate()">
                             <small>Налог считается только с этой суммы</small>
                         </div>
                         <div class="form-group">
                             <label for="limit-crypto">Лимит крипто (€):</label>
-                            <input type="number" id="limit-crypto" value="1100" min="0" step="0.01">
+                            <input type="number" id="limit-crypto" value="1100" min="0" step="0.01" onchange="updateLimitsAndRecalculate()">
                         </div>
-                        <button onclick="updateLimits()">Сохранить лимиты</button>
+                        <div class="form-group">
+                            <label for="income-euro">Доход (€):</label>
+                            <input type="number" id="income-euro" placeholder="Рассчитывается автоматически" min="0" step="0.01" readonly class="readonly-field">
+                            <small>Рассчитывается автоматически: ФОП + Крипто</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="tax-rate">Ставка налога (%):</label>
+                            <input type="number" id="tax-rate" value="7.30" step="0.01" min="0" max="100" onchange="updateTaxRate()">
+                        </div>
+                        <button onclick="updateLimitsAndRecalculate()">Пересчитать</button>
                     </div>
                 </div>
                 
@@ -843,6 +840,13 @@
                 if (taxRateEl) taxRateEl.value = taxRate;
                 if (limitFopEl) limitFopEl.value = limitFop;
                 if (limitCryptoEl) limitCryptoEl.value = limitCrypto;
+                
+                // АВТОМАТИЧЕСКИЙ РАСЧЕТ ДОХОДА при загрузке
+                if (incomeEuro === 0 || incomeEuro !== (limitFop + limitCrypto)) {
+                    incomeEuro = limitFop + limitCrypto;
+                    console.log('Доход пересчитан автоматически:', incomeEuro);
+                }
+                
                 if (incomeEuroEl) incomeEuroEl.value = incomeEuro;
                 
                 // Создать диаграмму
@@ -1002,25 +1006,35 @@
         // ОБНОВЛЕНИЕ НАСТРОЕК
         // ========================================
         
-        function updateSettings() {
-            const newIncome = parseFloat(document.getElementById('income-euro').value) || 0;
-            const newTaxRate = parseFloat(document.getElementById('tax-rate').value) || 7.3;
+        function updateLimitsAndRecalculate() {
+            const newLimitFop = parseFloat(document.getElementById('limit-fop').value) || 0;
+            const newLimitCrypto = parseFloat(document.getElementById('limit-crypto').value) || 0;
             
-            if (newIncome < 0 || newTaxRate < 0 || newTaxRate > 100) {
-                alert('Проверьте введенные значения');
+            if (newLimitFop < 0 || newLimitCrypto < 0) {
+                alert('Лимиты не могут быть отрицательными');
                 return;
             }
             
-            incomeEuro = newIncome;
-            taxRate = newTaxRate;
+            // Обновить лимиты
+            limitFop = newLimitFop;
+            limitCrypto = newLimitCrypto;
             
+            // АВТОМАТИЧЕСКИЙ РАСЧЕТ ДОХОДА
+            incomeEuro = limitFop + limitCrypto;
+            
+            // Обновить поле дохода
+            const incomeEuroEl = document.getElementById('income-euro');
+            if (incomeEuroEl) {
+                incomeEuroEl.value = incomeEuro.toFixed(2);
+            }
+            
+            console.log('Обновлены лимиты и доход:', { limitFop, limitCrypto, incomeEuro });
+            
+            // Пересчитать все суммы
             totalIncomeUAH = incomeEuro * rateEURtoUAH;
             totalIncomeBGN = incomeEuro * rateEURtoBGN;
             
-            // Пересчитать суммы в категориях
             calculateCategoryAmounts();
-            
-            // Обновить отображение данных
             renderCategoriesTable();
             updateBudgetSummary();
             calculateReferenceAmounts();
@@ -1029,28 +1043,27 @@
             // Сохранить данные
             saveData();
             
-            alert('Настройки сохранены!');
+            alert('Настройки сохранены и все суммы пересчитаны!');
         }
         
-        function updateLimits() {
-            const newLimitFop = parseFloat(document.getElementById('limit-fop').value) || 2200;
-            const newLimitCrypto = parseFloat(document.getElementById('limit-crypto').value) || 1100;
+        function updateTaxRate() {
+            const newTaxRate = parseFloat(document.getElementById('tax-rate').value) || 7.3;
             
-            if (newLimitFop < 0 || newLimitCrypto < 0) {
-                alert('Лимиты не могут быть отрицательными');
+            if (newTaxRate < 0 || newTaxRate > 100) {
+                alert('Ставка налога должна быть от 0 до 100%');
+                document.getElementById('tax-rate').value = taxRate;
                 return;
             }
             
-            limitFop = newLimitFop;
-            limitCrypto = newLimitCrypto;
+            taxRate = newTaxRate;
             
-            // Пересчитать и обновить отображение
+            // Пересчитать справочные суммы
             calculateReferenceAmounts();
             
             // Сохранить данные
             saveData();
             
-            alert('Лимиты сохранены!');
+            console.log('Обновлена ставка налога:', taxRate);
         }
         
         // ========================================
