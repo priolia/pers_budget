@@ -812,31 +812,52 @@
         // ========================================
         
         async function initializeApp() {
-            // Загрузить курсы валют
-            await fetchExchangeRates();
+            console.log('=== Инициализация приложения ===');
             
-            // Загрузить сохраненные данные
-            loadData();
-            
-            // Инициализировать селектор периода
-            initializePeriodSelector();
-            
-            // Заполнить таблицы и обновить значения
-            renderCategoriesTable();
-            renderExpensesTable();
-            updateBudgetSummary();
-            
-            // Установить значения в полях ввода
-            document.getElementById('tax-rate').value = taxRate;
-            document.getElementById('limit-fop').value = limitFop;
-            document.getElementById('limit-crypto').value = limitCrypto;
-            document.getElementById('income-euro').value = incomeEuro;
-            
-            // Создать диаграмму
-            createBudgetChart();
-            
-            // Рассчитать суммы для справочника
-            calculateReferenceAmounts();
+            try {
+                // Загрузить курсы валют
+                console.log('Шаг 1: Загрузка курсов валют...');
+                await fetchExchangeRates();
+                
+                // Загрузить сохраненные данные
+                console.log('Шаг 2: Загрузка данных...');
+                loadData();
+                
+                // Инициализировать селектор периода
+                console.log('Шаг 3: Инициализация селектора периода...');
+                initializePeriodSelector();
+                
+                // Заполнить таблицы и обновить значения
+                console.log('Шаг 4: Рендер таблиц...');
+                renderCategoriesTable();
+                renderExpensesTable();
+                updateBudgetSummary();
+                
+                // Установить значения в полях ввода
+                console.log('Шаг 5: Установка значений в поля...');
+                const taxRateEl = document.getElementById('tax-rate');
+                const limitFopEl = document.getElementById('limit-fop');
+                const limitCryptoEl = document.getElementById('limit-crypto');
+                const incomeEuroEl = document.getElementById('income-euro');
+                
+                if (taxRateEl) taxRateEl.value = taxRate;
+                if (limitFopEl) limitFopEl.value = limitFop;
+                if (limitCryptoEl) limitCryptoEl.value = limitCrypto;
+                if (incomeEuroEl) incomeEuroEl.value = incomeEuro;
+                
+                // Создать диаграмму
+                console.log('Шаг 6: Создание диаграммы...');
+                createBudgetChart();
+                
+                // Рассчитать суммы для справочника
+                console.log('Шаг 7: Расчет справочных сумм...');
+                calculateReferenceAmounts();
+                
+                console.log('=== Инициализация завершена успешно ===');
+            } catch (error) {
+                console.error('ОШИБКА при инициализации приложения:', error);
+                alert('Произошла ошибка при загрузке приложения. Проверьте консоль браузера (F12).');
+            }
         }
         
         // ========================================
@@ -895,7 +916,13 @@
         // ========================================
         
         async function fetchExchangeRates() {
-            document.getElementById('rate-loader').style.display = 'inline-block';
+            const loader = document.getElementById('rate-loader');
+            const ratesContainer = document.getElementById('exchange-rates');
+            const lastUpdateEl = document.getElementById('last-update');
+            
+            if (loader) {
+                loader.style.display = 'inline-block';
+            }
             
             try {
                 // Используем один запрос для обеих валют
@@ -910,13 +937,19 @@
                 lastRatesUpdate = new Date().toLocaleString('ru-RU');
                 
                 // Обновляем информацию о курсах
-                document.getElementById('exchange-rates').innerHTML = `
-                    <div class="rate-item">1€ = ${rateEURtoUAH.toFixed(2)} UAH</div>
-                    <div class="rate-item">1€ = ${rateEURtoBGN.toFixed(2)} BGN</div>
-                    <div class="rate-item">1 BGN = ${(rateEURtoUAH / rateEURtoBGN).toFixed(2)} UAH</div>
-                `;
+                if (ratesContainer) {
+                    ratesContainer.innerHTML = `
+                        <div class="rate-item">1€ = ${rateEURtoUAH.toFixed(2)} UAH</div>
+                        <div class="rate-item">1€ = ${rateEURtoBGN.toFixed(2)} BGN</div>
+                        <div class="rate-item">1 BGN = ${(rateEURtoUAH / rateEURtoBGN).toFixed(2)} UAH</div>
+                    `;
+                }
                 
-                document.getElementById('last-update').textContent = lastRatesUpdate;
+                if (lastUpdateEl) {
+                    lastUpdateEl.textContent = lastRatesUpdate;
+                }
+                
+                console.log('Курсы валют успешно загружены:', { rateEURtoUAH, rateEURtoBGN });
                 
                 // Пересчитываем суммы с новыми курсами
                 calculateReferenceAmounts();
@@ -924,13 +957,17 @@
                 saveData();
             } catch (error) {
                 console.error('Ошибка загрузки курсов валют:', error);
-                document.getElementById('exchange-rates').innerHTML = `
-                    <div class="rate-item" style="color: red;">Ошибка загрузки курсов. Используются значения по умолчанию.</div>
-                    <div class="rate-item">1€ = ${rateEURtoUAH.toFixed(2)} UAH</div>
-                    <div class="rate-item">1€ = ${rateEURtoBGN.toFixed(2)} BGN</div>
-                `;
+                if (ratesContainer) {
+                    ratesContainer.innerHTML = `
+                        <div class="rate-item" style="color: red;">Ошибка загрузки курсов. Используются значения по умолчанию.</div>
+                        <div class="rate-item">1€ = ${rateEURtoUAH.toFixed(2)} UAH</div>
+                        <div class="rate-item">1€ = ${rateEURtoBGN.toFixed(2)} BGN</div>
+                    `;
+                }
             } finally {
-                document.getElementById('rate-loader').style.display = 'none';
+                if (loader) {
+                    loader.style.display = 'none';
+                }
             }
         }
         
@@ -1869,43 +1906,77 @@
         }
         
         function loadData() {
+            console.log('Загрузка данных...');
             const savedData = localStorage.getItem('budgetAppData');
             
             if (savedData) {
-                const data = JSON.parse(savedData);
-                
-                // Обновить категории
-                if (data.categories && data.categories.length > 0) {
-                    categories = data.categories;
-                } else {
+                try {
+                    const data = JSON.parse(savedData);
+                    console.log('Найдены сохраненные данные:', data);
+                    
+                    // Обновить категории
+                    if (data.categories && Array.isArray(data.categories) && data.categories.length > 0) {
+                        categories = data.categories;
+                        console.log('Загружено категорий:', categories.length);
+                    } else {
+                        console.warn('Сохраненные категории пусты, использую дефолтные');
+                        categories = JSON.parse(JSON.stringify(defaultCategories));
+                    }
+                    
+                    // Обновить настройки
+                    if (data.rateEURtoUAH) rateEURtoUAH = data.rateEURtoUAH;
+                    if (data.rateEURtoBGN) rateEURtoBGN = data.rateEURtoBGN;
+                    if (data.taxRate !== undefined) taxRate = data.taxRate;
+                    if (data.limitFop !== undefined) limitFop = data.limitFop;
+                    if (data.limitCrypto !== undefined) limitCrypto = data.limitCrypto;
+                    if (data.incomeEuro !== undefined) incomeEuro = data.incomeEuro;
+                    if (data.totalIncomeUAH !== undefined) totalIncomeUAH = data.totalIncomeUAH;
+                    if (data.totalIncomeBGN !== undefined) totalIncomeBGN = data.totalIncomeBGN;
+                    if (data.lastRatesUpdate) lastRatesUpdate = data.lastRatesUpdate;
+                    
+                    // Обновить информацию о курсах
+                    if (lastRatesUpdate) {
+                        const ratesContainer = document.getElementById('exchange-rates');
+                        const lastUpdateEl = document.getElementById('last-update');
+                        
+                        if (ratesContainer) {
+                            ratesContainer.innerHTML = `
+                                <div class="rate-item">1€ = ${rateEURtoUAH.toFixed(2)} UAH</div>
+                                <div class="rate-item">1€ = ${rateEURtoBGN.toFixed(2)} BGN</div>
+                                <div class="rate-item">1 BGN = ${(rateEURtoUAH / rateEURtoBGN).toFixed(2)} UAH</div>
+                            `;
+                        }
+                        
+                        if (lastUpdateEl) {
+                            lastUpdateEl.textContent = lastRatesUpdate;
+                        }
+                    }
+                } catch (error) {
+                    console.error('Ошибка парсинга сохраненных данных:', error);
                     categories = JSON.parse(JSON.stringify(defaultCategories));
-                }
-                
-                // Обновить настройки
-                if (data.rateEURtoUAH) rateEURtoUAH = data.rateEURtoUAH;
-                if (data.rateEURtoBGN) rateEURtoBGN = data.rateEURtoBGN;
-                if (data.taxRate !== undefined) taxRate = data.taxRate;
-                if (data.limitFop !== undefined) limitFop = data.limitFop;
-                if (data.limitCrypto !== undefined) limitCrypto = data.limitCrypto;
-                if (data.incomeEuro !== undefined) incomeEuro = data.incomeEuro;
-                if (data.totalIncomeUAH !== undefined) totalIncomeUAH = data.totalIncomeUAH;
-                if (data.totalIncomeBGN !== undefined) totalIncomeBGN = data.totalIncomeBGN;
-                if (data.lastRatesUpdate) lastRatesUpdate = data.lastRatesUpdate;
-                
-                // Обновить информацию о курсах
-                if (lastRatesUpdate) {
-                    document.getElementById('exchange-rates').innerHTML = `
-                        <div class="rate-item">1€ = ${rateEURtoUAH.toFixed(2)} UAH</div>
-                        <div class="rate-item">1€ = ${rateEURtoBGN.toFixed(2)} BGN</div>
-                        <div class="rate-item">1 BGN = ${(rateEURtoUAH / rateEURtoBGN).toFixed(2)} UAH</div>
-                    `;
-                    document.getElementById('last-update').textContent = lastRatesUpdate;
                 }
             } else {
                 // Первый запуск - использовать категории по умолчанию
+                console.log('Первый запуск - загрузка дефолтных категорий');
                 categories = JSON.parse(JSON.stringify(defaultCategories));
+                
+                // ВАЖНО: Сразу пересчитать суммы
+                calculateCategoryAmounts();
+                
+                // Сохранить
                 saveData();
             }
+            
+            // КРИТИЧЕСКИ ВАЖНО: Проверка что категории загружены
+            if (!categories || categories.length === 0) {
+                console.error('КРИТИЧЕСКАЯ ОШИБКА: Категории не загружены! Принудительно загружаю дефолтные...');
+                categories = JSON.parse(JSON.stringify(defaultCategories));
+                calculateCategoryAmounts();
+                saveData();
+            }
+            
+            console.log('Итого загружено категорий:', categories.length);
+            console.log('Категории:', categories.map(c => c.name).join(', '));
         }
         
         // ========================================
