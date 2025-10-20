@@ -812,9 +812,6 @@
         // ========================================
         
         async function initializeApp() {
-            // Инициализация пароля
-            await initializePassword();
-            
             // Загрузить курсы валют
             await fetchExchangeRates();
             
@@ -1066,6 +1063,20 @@
             }
         }
         
+        // ========================================
+        // ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ДЛЯ РАСЧЕТА БАЗЫ
+        // ========================================
+        
+        function getCategoryCalculationBase(categoryName) {
+            // Для категории "Налоги" база расчета = минимум из дохода и лимита ФОП
+            // (налог берется только с суммы в пределах ФОП)
+            if (categoryName && categoryName === 'Налоги') {
+                return Math.min(incomeEuro, limitFop);
+            }
+            // Для всех остальных категорий база расчета = весь доход
+            return incomeEuro;
+        }
+        
         function updateCategoryName(input) {
             const row = input.closest('tr');
             const rowIndex = Array.from(row.parentElement.children).indexOf(row);
@@ -1109,8 +1120,10 @@
             categories[rowIndex].limit = newLimit;
             
             // Если доход установлен, пересчитать процент
-            if (incomeEuro > 0) {
-                categories[rowIndex].percentage = (newLimit / incomeEuro * 100).toFixed(2);
+            // ИСПРАВЛЕНО: используем правильную базу для расчета
+            const base = getCategoryCalculationBase(categories[rowIndex].name);
+            if (base > 0) {
+                categories[rowIndex].percentage = (newLimit / base * 100).toFixed(2);
                 row.querySelector('.category-percentage').value = categories[rowIndex].percentage;
             }
             
@@ -1134,8 +1147,10 @@
             categories[rowIndex].percentage = newPercentage;
             
             // Пересчитать лимит
-            if (incomeEuro > 0) {
-                categories[rowIndex].limit = (incomeEuro * newPercentage / 100).toFixed(2);
+            // ИСПРАВЛЕНО: используем правильную базу для расчета
+            const base = getCategoryCalculationBase(categories[rowIndex].name);
+            if (base > 0) {
+                categories[rowIndex].limit = (base * newPercentage / 100).toFixed(2);
                 row.querySelector('.category-limit').value = categories[rowIndex].limit;
             }
             
@@ -1892,7 +1907,7 @@
                 saveData();
             }
         }
-
+        
         // ========================================
         // ИНИЦИАЛИЗАЦИЯ ПРИ ЗАГРУЗКЕ СТРАНИЦЫ
         // ========================================
