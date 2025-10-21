@@ -351,7 +351,8 @@
     <div id="app-container">
         <div class="container" style="position: relative;">
             <div class="user-info">
-                <span class="settings-link" onclick="showTab('settings')">⚙️ Настройки</span> | 
+                <span id="connection-status" title="Статус подключения к серверу">🔄</span> |
+                <span class="settings-link" onclick="showTab('settings')">⚙️ Настройки</span> |
                 <span class="settings-link" onclick="logout()">Выход</span>
             </div>
             
@@ -654,7 +655,10 @@
 
     <!-- Подключаем Chart.js для визуализации данных -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    
+
+    <!-- Подключаем модуль для работы с API -->
+    <script src="./api.js"></script>
+
     <script>
         // ========================================
         // ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ И НАЧАЛЬНЫЕ НАСТРОЙКИ
@@ -1437,9 +1441,27 @@
             }
         }
         
-        function clearExpenses() {
+        async function clearExpenses() {
             if (confirm('Вы уверены, что хотите удалить все расходы за все периоды? Это действие невозможно отменить.')) {
-                localStorage.removeItem('budgetAppExpenses');
+                // Сохранить пустой массив расходов через API
+                const data = {
+                    categories: categories,
+                    expenses: [],
+                    settings: {
+                        rateEURtoUAH: rateEURtoUAH,
+                        rateEURtoBGN: rateEURtoBGN,
+                        taxRate: taxRate,
+                        limitFop: limitFop,
+                        limitCrypto: limitCrypto,
+                        incomeEuro: incomeEuro,
+                        totalIncomeUAH: totalIncomeUAH,
+                        totalIncomeBGN: totalIncomeBGN,
+                        lastRatesUpdate: lastRatesUpdate
+                    }
+                };
+
+                await BudgetAPI.saveData(data);
+
                 renderExpensesTable();
                 updateBudgetSummary();
                 showExpenseMessage('Все расходы удалены', 'success');
@@ -1513,29 +1535,46 @@
             return expenses;
         }
         
-        function saveExpensesData() {
+        async function saveExpensesData() {
             const currentPeriodExpenses = collectExpensesData();
-            
-            // Получить все расходы из localStorage
+
+            // Получить все расходы
             const allExpenses = getAllExpenses();
-            
+
             // Удалить расходы за текущий период
             const otherExpenses = allExpenses.filter(exp => {
                 const expDate = new Date(exp.date);
                 return expDate.getMonth() + 1 !== currentMonth || expDate.getFullYear() !== currentYear;
             });
-            
+
             // Добавить текущие расходы
             const updatedExpenses = [...otherExpenses, ...currentPeriodExpenses];
-            
-            // Сохранить
-            localStorage.setItem('budgetAppExpenses', JSON.stringify(updatedExpenses));
-            
+
+            // Сохранить через API
+            const data = {
+                categories: categories,
+                expenses: updatedExpenses,
+                settings: {
+                    rateEURtoUAH: rateEURtoUAH,
+                    rateEURtoBGN: rateEURtoBGN,
+                    taxRate: taxRate,
+                    limitFop: limitFop,
+                    limitCrypto: limitCrypto,
+                    incomeEuro: incomeEuro,
+                    totalIncomeUAH: totalIncomeUAH,
+                    totalIncomeBGN: totalIncomeBGN,
+                    lastRatesUpdate: lastRatesUpdate
+                }
+            };
+
+            await BudgetAPI.saveData(data);
+
             // Обновить бюджет
             updateBudgetSummary();
         }
-        
+
         function getAllExpenses() {
+            // Берем из localStorage как кэш (API автоматически синхронизирует)
             const saved = localStorage.getItem('budgetAppExpenses');
             return saved ? JSON.parse(saved) : [];
         }
@@ -1548,14 +1587,32 @@
             });
         }
         
-        function updateExpensesCategoryName(oldName, newName) {
+        async function updateExpensesCategoryName(oldName, newName) {
             const allExpenses = getAllExpenses();
             allExpenses.forEach(expense => {
                 if (expense.category === oldName) {
                     expense.category = newName;
                 }
             });
-            localStorage.setItem('budgetAppExpenses', JSON.stringify(allExpenses));
+
+            // Сохранить через API
+            const data = {
+                categories: categories,
+                expenses: allExpenses,
+                settings: {
+                    rateEURtoUAH: rateEURtoUAH,
+                    rateEURtoBGN: rateEURtoBGN,
+                    taxRate: taxRate,
+                    limitFop: limitFop,
+                    limitCrypto: limitCrypto,
+                    incomeEuro: incomeEuro,
+                    totalIncomeUAH: totalIncomeUAH,
+                    totalIncomeBGN: totalIncomeBGN,
+                    lastRatesUpdate: lastRatesUpdate
+                }
+            };
+
+            await BudgetAPI.saveData(data);
         }
         
         // ========================================
@@ -1960,102 +2017,126 @@
         // ========================================
         // СОХРАНЕНИЕ И ЗАГРУЗКА ДАННЫХ
         // ========================================
-        
-        function saveData() {
+
+        async function saveData() {
             const data = {
                 categories: categories,
-                rateEURtoUAH: rateEURtoUAH,
-                rateEURtoBGN: rateEURtoBGN,
-                taxRate: taxRate,
-                limitFop: limitFop,
-                limitCrypto: limitCrypto,
-                incomeEuro: incomeEuro,
-                totalIncomeUAH: totalIncomeUAH,
-                totalIncomeBGN: totalIncomeBGN,
-                lastRatesUpdate: lastRatesUpdate
+                expenses: getAllExpenses(),
+                settings: {
+                    rateEURtoUAH: rateEURtoUAH,
+                    rateEURtoBGN: rateEURtoBGN,
+                    taxRate: taxRate,
+                    limitFop: limitFop,
+                    limitCrypto: limitCrypto,
+                    incomeEuro: incomeEuro,
+                    totalIncomeUAH: totalIncomeUAH,
+                    totalIncomeBGN: totalIncomeBGN,
+                    lastRatesUpdate: lastRatesUpdate
+                }
             };
-            
-            localStorage.setItem('budgetAppData', JSON.stringify(data));
+
+            await BudgetAPI.saveData(data);
+            updateConnectionStatus();
         }
         
-        function loadData() {
+        async function loadData() {
             console.log('Загрузка данных...');
-            const savedData = localStorage.getItem('budgetAppData');
-            
-            if (savedData) {
-                try {
-                    const data = JSON.parse(savedData);
-                    console.log('Найдены сохраненные данные:', data);
-                    
-                    // Обновить категории
-                    if (data.categories && Array.isArray(data.categories) && data.categories.length > 0) {
-                        categories = data.categories;
-                        console.log('Загружено категорий:', categories.length);
-                    } else {
-                        console.warn('Сохраненные категории пусты, использую дефолтные');
-                        categories = JSON.parse(JSON.stringify(defaultCategories));
-                    }
-                    
-                    // Обновить настройки
-                    if (data.rateEURtoUAH) rateEURtoUAH = data.rateEURtoUAH;
-                    if (data.rateEURtoBGN) rateEURtoBGN = data.rateEURtoBGN;
-                    if (data.taxRate !== undefined) taxRate = data.taxRate;
-                    if (data.limitFop !== undefined) limitFop = data.limitFop;
-                    if (data.limitCrypto !== undefined) limitCrypto = data.limitCrypto;
-                    if (data.incomeEuro !== undefined) incomeEuro = data.incomeEuro;
-                    if (data.totalIncomeUAH !== undefined) totalIncomeUAH = data.totalIncomeUAH;
-                    if (data.totalIncomeBGN !== undefined) totalIncomeBGN = data.totalIncomeBGN;
-                    if (data.lastRatesUpdate) lastRatesUpdate = data.lastRatesUpdate;
-                    
-                    // Обновить информацию о курсах
-                    if (lastRatesUpdate) {
-                        const ratesContainer = document.getElementById('exchange-rates');
-                        const lastUpdateEl = document.getElementById('last-update');
-                        
-                        if (ratesContainer) {
-                            ratesContainer.innerHTML = `
-                                <div class="rate-item">1€ = ${rateEURtoUAH.toFixed(2)} UAH</div>
-                                <div class="rate-item">1€ = ${rateEURtoBGN.toFixed(2)} BGN</div>
-                                <div class="rate-item">1 BGN = ${(rateEURtoUAH / rateEURtoBGN).toFixed(2)} UAH</div>
-                            `;
-                        }
-                        
-                        if (lastUpdateEl) {
-                            lastUpdateEl.textContent = lastRatesUpdate;
-                        }
-                    }
-                } catch (error) {
-                    console.error('Ошибка парсинга сохраненных данных:', error);
+
+            try {
+                const data = await BudgetAPI.loadData();
+                console.log('Данные загружены:', data);
+
+                // Обновить категории
+                if (data.categories && Array.isArray(data.categories) && data.categories.length > 0) {
+                    categories = data.categories;
+                    console.log('Загружено категорий:', categories.length);
+                } else {
+                    console.warn('Категории пусты, использую дефолтные');
                     categories = JSON.parse(JSON.stringify(defaultCategories));
                 }
-            } else {
-                // Первый запуск - использовать категории по умолчанию
-                console.log('Первый запуск - загрузка дефолтных категорий');
+
+                // Обновить настройки
+                if (data.settings) {
+                    if (data.settings.rateEURtoUAH) rateEURtoUAH = data.settings.rateEURtoUAH;
+                    if (data.settings.rateEURtoBGN) rateEURtoBGN = data.settings.rateEURtoBGN;
+                    if (data.settings.taxRate !== undefined) taxRate = data.settings.taxRate;
+                    if (data.settings.limitFop !== undefined) limitFop = data.settings.limitFop;
+                    if (data.settings.limitCrypto !== undefined) limitCrypto = data.settings.limitCrypto;
+                    if (data.settings.incomeEuro !== undefined) incomeEuro = data.settings.incomeEuro;
+                    if (data.settings.totalIncomeUAH !== undefined) totalIncomeUAH = data.settings.totalIncomeUAH;
+                    if (data.settings.totalIncomeBGN !== undefined) totalIncomeBGN = data.settings.totalIncomeBGN;
+                    if (data.settings.lastRatesUpdate) lastRatesUpdate = data.settings.lastRatesUpdate;
+                }
+
+                // Обновить информацию о курсах
+                if (lastRatesUpdate) {
+                    const ratesContainer = document.getElementById('exchange-rates');
+                    const lastUpdateEl = document.getElementById('last-update');
+
+                    if (ratesContainer) {
+                        ratesContainer.innerHTML = `
+                            <div class="rate-item">1€ = ${rateEURtoUAH.toFixed(2)} UAH</div>
+                            <div class="rate-item">1€ = ${rateEURtoBGN.toFixed(2)} BGN</div>
+                            <div class="rate-item">1 BGN = ${(rateEURtoUAH / rateEURtoBGN).toFixed(2)} UAH</div>
+                        `;
+                    }
+
+                    if (lastUpdateEl) {
+                        lastUpdateEl.textContent = lastRatesUpdate;
+                    }
+                }
+
+                // КРИТИЧЕСКИ ВАЖНО: Проверка что категории загружены
+                if (!categories || categories.length === 0) {
+                    console.error('КРИТИЧЕСКАЯ ОШИБКА: Категории не загружены! Принудительно загружаю дефолтные...');
+                    categories = JSON.parse(JSON.stringify(defaultCategories));
+                    calculateCategoryAmounts();
+                    await saveData();
+                }
+
+                console.log('Итого загружено категорий:', categories.length);
+                console.log('Категории:', categories.map(c => c.name).join(', '));
+
+                updateConnectionStatus();
+
+            } catch (error) {
+                console.error('Ошибка загрузки данных:', error);
+                // Fallback на дефолтные категории
                 categories = JSON.parse(JSON.stringify(defaultCategories));
-                
-                // ВАЖНО: Сразу пересчитать суммы
                 calculateCategoryAmounts();
-                
-                // Сохранить
-                saveData();
             }
-            
-            // КРИТИЧЕСКИ ВАЖНО: Проверка что категории загружены
-            if (!categories || categories.length === 0) {
-                console.error('КРИТИЧЕСКАЯ ОШИБКА: Категории не загружены! Принудительно загружаю дефолтные...');
-                categories = JSON.parse(JSON.stringify(defaultCategories));
-                calculateCategoryAmounts();
-                saveData();
-            }
-            
-            console.log('Итого загружено категорий:', categories.length);
-            console.log('Категории:', categories.map(c => c.name).join(', '));
         }
         
+        // ========================================
+        // ИНДИКАТОР СТАТУСА ПОДКЛЮЧЕНИЯ
+        // ========================================
+
+        function updateConnectionStatus() {
+            const statusEl = document.getElementById('connection-status');
+            if (!statusEl) return;
+
+            const status = BudgetAPI.getStatus();
+
+            if (!status.apiEnabled) {
+                statusEl.textContent = '💾';
+                statusEl.title = 'Локальное хранилище (API отключен)';
+                return;
+            }
+
+            if (status.online) {
+                statusEl.textContent = '✅';
+                const lastSync = status.lastSync ? new Date(status.lastSync).toLocaleString('ru-RU') : 'никогда';
+                statusEl.title = `Подключено к серверу\nПоследняя синхронизация: ${lastSync}`;
+            } else {
+                statusEl.textContent = '⚠️';
+                statusEl.title = 'Оффлайн режим\nДанные сохраняются локально';
+            }
+        }
+
         // ========================================
         // ИНИЦИАЛИЗАЦИЯ ПРИ ЗАГРУЗКЕ СТРАНИЦЫ
         // ========================================
-        
+
         // Инициализировать дефолтный пароль при первом запуске
         initializePassword();
         
