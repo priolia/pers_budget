@@ -12,10 +12,10 @@ const BudgetAPI = {
     // ========================================
 
     // URL вашего API сервера (замените YOUR_SERVER_IP на IP вашего сервера)
-    API_BASE_URL: 'http://YOUR_SERVER_IP:5000/api',
+    API_BASE_URL: 'http://31.220.42.219:5000/api',
 
     // API ключ (должен совпадать с .env файлом на сервере)
-    API_KEY: 'my-secret-budget-key-2025',
+    API_KEY: 'BdgtAPI_7k9mX2pL5nQ8wR4vY6zT3hJ0sF1dG',
 
     // Режим работы
     USE_API: true,  // false = только localStorage (для тестирования)
