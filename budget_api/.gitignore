@@ -1,0 +1,33 @@
+# Переменные окружения (содержат секретные ключи)
+.env
+
+# Файл с данными (личная информация)
+data.json
+
+# Бэкапы (личная информация)
+backups/*.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Виртуальное окружение
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Логи
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
