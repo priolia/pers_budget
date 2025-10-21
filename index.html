@@ -451,6 +451,10 @@
                             <td id="summary-plan">0.00</td>
                         </tr>
                         <tr>
+                            <td>Запланировано из бюджета (%):</td>
+                            <td id="budget-planned-percentage">0.00%</td>
+                        </tr>
+                        <tr>
                             <td>Остается после планируемых (€):</td>
                             <td id="remaining-after-planned">0.00</td>
                         </tr>
@@ -602,12 +606,12 @@
                             <td id="ref-total-crypto-bgn">0.00</td>
                         </tr>
                         <tr>
-                            <td>Налог с ФОП (грн):</td>
+                            <td>Налог с ФОП за месяц (грн):</td>
                             <td id="ref-tax-amount-uah">0.00</td>
                         </tr>
                         <tr>
-                            <td>Налог с ФОП (лев):</td>
-                            <td id="ref-tax-amount-bgn">0.00</td>
+                            <td>Налог с ФОП за квартал (грн):</td>
+                            <td id="ref-tax-amount-quarter-uah">0.00</td>
                         </tr>
                     </table>
                     <button onclick="calculateReferenceAmounts()" style="margin-top: 10px;">Рассчитать</button>
@@ -1003,6 +1007,26 @@
         }
         
         // ========================================
+        // НОВАЯ ФУНКЦИЯ: ПЕРЕСЧЕТ ЛИМИТОВ КАТЕГОРИЙ
+        // ========================================
+        
+        function recalculateCategoryLimits() {
+            console.log('Пересчет лимитов категорий...');
+            categories.forEach(category => {
+                if (category.name === 'Налоги') {
+                    // Для налогов база = минимум из дохода и лимита ФОП
+                    const taxBase = Math.min(incomeEuro, limitFop);
+                    category.limit = parseFloat((taxBase * category.percentage / 100).toFixed(2));
+                    console.log(`  ${category.name}: база=${taxBase}, процент=${category.percentage}%, лимит=${category.limit}€`);
+                } else {
+                    // Для остальных категорий база = весь доход
+                    category.limit = parseFloat((incomeEuro * category.percentage / 100).toFixed(2));
+                    console.log(`  ${category.name}: база=${incomeEuro}, процент=${category.percentage}%, лимит=${category.limit}€`);
+                }
+            });
+        }
+        
+        // ========================================
         // ОБНОВЛЕНИЕ НАСТРОЕК
         // ========================================
         
@@ -1029,6 +1053,9 @@
             }
             
             console.log('Обновлены лимиты и доход:', { limitFop, limitCrypto, incomeEuro });
+            
+            // ИЗМЕНЕНИЕ 1: Пересчитать лимиты категорий
+            recalculateCategoryLimits();
             
             // Пересчитать все суммы
             totalIncomeUAH = incomeEuro * rateEURtoUAH;
@@ -1057,7 +1084,18 @@
             
             taxRate = newTaxRate;
             
+            // ИЗМЕНЕНИЕ 2: При изменении ставки налога пересчитываем лимит категории "Налоги"
+            const taxCategory = categories.find(cat => cat.name === 'Налоги');
+            if (taxCategory) {
+                taxCategory.percentage = taxRate;
+                const taxBase = Math.min(incomeEuro, limitFop);
+                taxCategory.limit = parseFloat((taxBase * taxRate / 100).toFixed(2));
+                console.log('Обновлена категория Налоги:', taxCategory);
+            }
+            
             // Пересчитать справочные суммы
+            calculateCategoryAmounts();
+            renderCategoriesTable();
             calculateReferenceAmounts();
             
             // Сохранить данные
@@ -1173,7 +1211,7 @@
             // ИСПРАВЛЕНО: используем правильную базу для расчета
             const base = getCategoryCalculationBase(categories[rowIndex].name);
             if (base > 0) {
-                categories[rowIndex].percentage = (newLimit / base * 100).toFixed(2);
+                categories[rowIndex].percentage = parseFloat((newLimit / base * 100).toFixed(2));
                 row.querySelector('.category-percentage').value = categories[rowIndex].percentage;
             }
             
@@ -1200,7 +1238,7 @@
             // ИСПРАВЛЕНО: используем правильную базу для расчета
             const base = getCategoryCalculationBase(categories[rowIndex].name);
             if (base > 0) {
-                categories[rowIndex].limit = (base * newPercentage / 100).toFixed(2);
+                categories[rowIndex].limit = parseFloat((base * newPercentage / 100).toFixed(2));
                 row.querySelector('.category-limit').value = categories[rowIndex].limit;
             }
             
@@ -1605,7 +1643,7 @@
         }
         
         // ========================================
-        // ОБНОВЛЕНИЕ СВОДКИ БЮДЖЕТА
+        // ОБНОВЛЕНИЕ СВОДКИ БЮДЖЕТА (ИЗМЕНЕНО)
         // ========================================
         
         function updateBudgetSummary() {
@@ -1702,25 +1740,42 @@
             document.getElementById('total-plan-expenses-euro').textContent = totalPlanExpensesEuro.toFixed(2);
             document.getElementById('total-plan-expenses-uah').textContent = totalPlanExpensesUAH.toFixed(2);
             
-            // Обновить итоговую секцию
-            // ИСПРАВЛЕНИЕ: Правильный расчет отложенных средств
-            // Отложено = Доход - Факт - План расходов
-            const savedEuro = incomeEuro - totalFact - totalPlanExpensesEuro;
-            const savedUAH = savedEuro * rateEURtoUAH;
+            // ИЗМЕНЕНИЕ 3: Обновить итоговую секцию с новыми формулами
             
+            // 1. Доход
             document.getElementById('summary-income').textContent = incomeEuro.toFixed(2);
+            
+            // 2. Факт расходов
             document.getElementById('summary-fact').textContent = totalFact.toFixed(2);
-            document.getElementById('summary-plan').textContent = totalPlanExpensesEuro.toFixed(2);
-            document.getElementById('remaining-after-planned').textContent = savedEuro.toFixed(2);
-            document.getElementById('saved-euro').textContent = Math.max(0, savedEuro).toFixed(2);
-            document.getElementById('saved-uah').textContent = Math.max(0, savedUAH).toFixed(2);
+            
+            // 3. План расходов - в новом формате "X из Y"
+            document.getElementById('summary-plan').textContent = 
+                `${totalPlanExpensesEuro.toFixed(2)} из ${incomeEuro.toFixed(2)}`;
+            
+            // 4. НОВОЕ: Запланировано из бюджета (%)
+            const plannedPercentage = incomeEuro > 0 ? (totalPlanExpensesEuro / incomeEuro * 100) : 0;
+            document.getElementById('budget-planned-percentage').textContent = 
+                plannedPercentage.toFixed(2) + '%';
+            
+            // 5. Остается после планируемых = доход - факт
+            const remainingAfterPlanned = incomeEuro - totalFact;
+            document.getElementById('remaining-after-planned').textContent = 
+                remainingAfterPlanned.toFixed(2);
+            
+            // 6. ИЗМЕНЕНО: Отложено евро = фактические траты в категории "Инвестиции и сбережения"
+            const savedEuro = getCategorySpentAmount('Инвестиции и сбережения');
+            document.getElementById('saved-euro').textContent = savedEuro.toFixed(2);
+            
+            // 7. ИЗМЕНЕНО: Отложено грн = отложено евро * курс
+            const savedUAH = savedEuro * rateEURtoUAH;
+            document.getElementById('saved-uah').textContent = savedUAH.toFixed(2);
             
             // Обновить диаграмму
             updateChart();
         }
         
         // ========================================
-        // РАСЧЕТ СПРАВОЧНЫХ СУММ
+        // РАСЧЕТ СПРАВОЧНЫХ СУММ (ИЗМЕНЕНО)
         // ========================================
         
         function calculateReferenceAmounts() {
@@ -1728,11 +1783,14 @@
             totalIncomeUAH = incomeEuro * rateEURtoUAH;
             totalIncomeBGN = incomeEuro * rateEURtoBGN;
             
-            // ИСПРАВЛЕНИЕ: Налог считается только с лимита ФОП
+            // ИЗМЕНЕНИЕ 4: Налог считается только с лимита ФОП
             const taxBaseEuro = Math.min(incomeEuro, limitFop);
             const taxAmountEuro = taxBaseEuro * taxRate / 100;
             const taxAmountUAH = taxAmountEuro * rateEURtoUAH;
             const taxAmountBGN = taxAmountEuro * rateEURtoBGN;
+            
+            // ИЗМЕНЕНИЕ 5: Налог за квартал
+            const taxAmountQuarterUAH = taxAmountUAH * 3;
             
             // Рассчитать суммы для ФОП и крипто
             const fopAmountUAH = limitFop * rateEURtoUAH;
@@ -1747,8 +1805,10 @@
             document.getElementById('ref-total-fop-bgn').textContent = fopAmountBGN.toFixed(2);
             document.getElementById('ref-total-crypto-uah').textContent = cryptoAmountUAH.toFixed(2);
             document.getElementById('ref-total-crypto-bgn').textContent = cryptoAmountBGN.toFixed(2);
+            
+            // ИЗМЕНЕНИЕ 6: Налог за месяц и за квартал
             document.getElementById('ref-tax-amount-uah').textContent = taxAmountUAH.toFixed(2);
-            document.getElementById('ref-tax-amount-bgn').textContent = taxAmountBGN.toFixed(2);
+            document.getElementById('ref-tax-amount-quarter-uah').textContent = taxAmountQuarterUAH.toFixed(2);
             
             // Пересчитать суммы категорий
             calculateCategoryAmounts();
