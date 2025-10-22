@@ -228,8 +228,8 @@ const BudgetAPI = {
                 categories: [],
                 expenses: [],
                 settings: {
-                    rateEURtoUAH: 41.5,
-                    rateEURtoBGN: 1.96,
+                    rateEURtoUAH: 48.40,  // Обновлено: актуальный курс на октябрь 2025
+                    rateEURtoBGN: 1.9558, // Обновлено: актуальный курс на октябрь 2025
                     taxRate: 7.3,
                     limitFop: 2200,
                     limitCrypto: 1100,
@@ -244,8 +244,8 @@ const BudgetAPI = {
             categories: data.categories || [],
             expenses: expenses,
             settings: {
-                rateEURtoUAH: data.rateEURtoUAH || 41.5,
-                rateEURtoBGN: data.rateEURtoBGN || 1.96,
+                rateEURtoUAH: data.rateEURtoUAH || 48.40,  // Актуальный курс октябрь 2025
+                rateEURtoBGN: data.rateEURtoBGN || 1.9558, // Актуальный курс октябрь 2025
                 taxRate: data.taxRate || 7.3,
                 limitFop: data.limitFop || 2200,
                 limitCrypto: data.limitCrypto || 1100,
