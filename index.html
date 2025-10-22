@@ -321,12 +321,42 @@
             width: 30%;
         }
 
+        /* Уменьшение шрифта для даты и часа */
+        #expenses-table td:nth-child(1) input {
+            font-size: 12px;
+        }
+
+        /* Поле суммы - такой же размер как категория */
+        #expenses-table td:nth-child(4) input {
+            width: 100%;
+        }
+
+        /* Одинаковая ширина для столбцов 5-8 (Валюта, Сумма план, Бюджет реф) */
+        #expenses-table th:nth-child(5),
+        #expenses-table td:nth-child(5),
+        #expenses-table th:nth-child(6),
+        #expenses-table td:nth-child(6),
+        #expenses-table th:nth-child(7),
+        #expenses-table td:nth-child(7),
+        #expenses-table th:nth-child(8),
+        #expenses-table td:nth-child(8) {
+            width: 90px;
+            min-width: 90px;
+            max-width: 90px;
+        }
+
+        /* Компактные заголовки */
         #expenses-table th:nth-child(6),
         #expenses-table th:nth-child(7),
         #expenses-table th:nth-child(8) {
             font-size: 11px;
             line-height: 1.2;
             padding: 6px 8px;
+        }
+
+        /* Уменьшение шрифта в селекте валюты */
+        #expenses-table .currency-select {
+            font-size: 12px;
         }
 
         @media (max-width: 768px) {
@@ -421,9 +451,7 @@
             
             <!-- Вкладка "Бюджет" -->
             <div id="budget-tab" class="tab-content active">
-                <h2>Сводка бюджета
-                    <button class="button-secondary" onclick="updateBudgetSummary()" style="padding: 5px 10px; font-size: 12px; margin-left: 10px;">🔄 Обновить</button>
-                </h2>
+                <h2>Сводка бюджета</h2>
                 <div class="table-container">
                     <table id="budget-summary-table">
                         <thead>
@@ -1440,21 +1468,44 @@
             }
         }
         
+        function updateExpenseRow(button) {
+            const row = button.closest('tr');
+
+            // Валидация данных
+            const dateInput = row.querySelector('input[type="datetime-local"]');
+            const descriptionInput = row.querySelector('input[type="text"]');
+            const amountInput = row.querySelector('.amount');
+
+            if (!dateInput.value || !descriptionInput.value.trim() || !amountInput.value || parseFloat(amountInput.value) <= 0) {
+                alert('Пожалуйста, заполните все поля корректно');
+                return;
+            }
+
+            // Сохранить изменения
+            saveExpensesData();
+
+            // Обновить бюджет
+            updateBudgetSummary();
+
+            // Показать сообщение
+            showExpenseMessage('Расход обновлен, бюджет пересчитан', 'success');
+        }
+
         function deleteExpense(button) {
             const row = button.closest('tr');
             const description = row.querySelector('input[type="text"]').value;
-            
+
             if (confirm(`Вы уверены, что хотите удалить расход "${description}"?`)) {
                 const category = row.querySelector('.category-select').value;
-                
+
                 // Удалить строку из таблицы
                 row.remove();
-                
+
                 // Обновить итоги и справочные значения для всех записей этой категории
                 calculateExpenseTotals();
                 updateRemainingLimitsForCategory(category);
                 saveExpensesData();
-                
+
                 showExpenseMessage('Расход удален', 'success');
             }
         }
@@ -1659,18 +1710,18 @@
                     row.className = 'expense-row';
                     
                     row.innerHTML = `
-                        <td><input type="datetime-local" value="${expense.date}" onchange="saveExpensesData()"></td>
-                        <td><input type="text" value="${expense.description}" onchange="saveExpensesData()"></td>
+                        <td><input type="datetime-local" value="${expense.date}"></td>
+                        <td><input type="text" value="${expense.description}"></td>
                         <td>
-                            <select class="category-select" onchange="updateExpenseRowReferenceValues(this); saveExpensesData()">
-                                ${categories.map(cat => 
+                            <select class="category-select" onchange="updateExpenseRowReferenceValues(this)">
+                                ${categories.map(cat =>
                                     `<option value="${cat.name}" ${cat.name === expense.category ? 'selected' : ''}>${cat.name}</option>`
                                 ).join('')}
                             </select>
                         </td>
-                        <td><input type="number" step="0.01" min="0" class="amount" value="${expense.amount}" onchange="validateExpenseRow(this); saveExpensesData()"></td>
+                        <td><input type="number" step="0.01" min="0" class="amount" value="${expense.amount}" onchange="validateExpenseRow(this)"></td>
                         <td>
-                            <select class="currency-select" onchange="validateExpenseRow(this); saveExpensesData()">
+                            <select class="currency-select" onchange="validateExpenseRow(this)">
                                 <option value="EUR" ${expense.currency === 'EUR' ? 'selected' : ''}>€</option>
                                 <option value="UAH" ${expense.currency === 'UAH' ? 'selected' : ''}>UAH</option>
                                 <option value="BGN" ${expense.currency === 'BGN' ? 'selected' : ''}>BGN</option>
@@ -1680,6 +1731,7 @@
                         <td><input type="text" class="budget-ref-uah readonly-field" readonly></td>
                         <td><input type="text" class="budget-ref-euro readonly-field" readonly></td>
                         <td>
+                            <button class="button-secondary" onclick="updateExpenseRow(this)" title="Обновить и пересчитать бюджет">🔄</button>
                             <button class="button-danger" onclick="deleteExpense(this)">🗑️</button>
                         </td>
                     `;
@@ -2135,32 +2187,49 @@
 
         async function syncWithServer() {
             const statusEl = document.getElementById('connection-status');
+            const originalStatus = statusEl ? statusEl.textContent : '';
+
             if (statusEl) {
                 statusEl.textContent = '🔄';
                 statusEl.title = 'Синхронизация...';
             }
 
             try {
-                console.log('Принудительная синхронизация с сервером...');
+                console.log('=== Начало синхронизации с сервером ===');
+
+                // Проверить доступность API
+                if (!BudgetAPI.USE_API) {
+                    alert('API отключен в настройках. Включите USE_API в api.js');
+                    updateConnectionStatus();
+                    return;
+                }
 
                 // Проверить доступность сервера
+                console.log('Проверка доступности сервера...');
                 const isOnline = await BudgetAPI.checkHealth();
+                console.log('Сервер доступен:', isOnline);
 
                 if (!isOnline) {
-                    alert('Сервер недоступен. Проверьте подключение к интернету.');
+                    alert('Сервер недоступен.\n\nВозможные причины:\n- Сервер не запущен\n- Нет подключения к интернету\n- Неправильный URL: ' + BudgetAPI.API_BASE_URL);
                     updateConnectionStatus();
                     return;
                 }
 
                 // Загрузить данные с сервера
+                console.log('Загрузка данных с сервера...');
                 const data = await BudgetAPI.sync();
+                console.log('Полученные данные:', data);
 
                 if (data) {
-                    // Обновить локальные данные
+                    // Обновить категории
                     if (data.categories && data.categories.length > 0) {
                         categories = data.categories;
+                        console.log('Загружено категорий:', categories.length);
+                    } else {
+                        console.warn('Категории пусты на сервере');
                     }
 
+                    // Обновить настройки
                     if (data.settings) {
                         if (data.settings.rateEURtoUAH) rateEURtoUAH = data.settings.rateEURtoUAH;
                         if (data.settings.rateEURtoBGN) rateEURtoBGN = data.settings.rateEURtoBGN;
@@ -2171,24 +2240,70 @@
                         if (data.settings.totalIncomeUAH !== undefined) totalIncomeUAH = data.settings.totalIncomeUAH;
                         if (data.settings.totalIncomeBGN !== undefined) totalIncomeBGN = data.settings.totalIncomeBGN;
                         if (data.settings.lastRatesUpdate) lastRatesUpdate = data.settings.lastRatesUpdate;
+                        console.log('Настройки обновлены');
                     }
 
-                    // Обновить интерфейс
+                    // Обновить расходы в localStorage
+                    if (data.expenses) {
+                        localStorage.setItem('budgetAppExpenses', JSON.stringify(data.expenses));
+                        console.log('Загружено расходов:', data.expenses.length);
+                    }
+
+                    // Обновить все поля интерфейса
+                    const taxRateEl = document.getElementById('tax-rate');
+                    const limitFopEl = document.getElementById('limit-fop');
+                    const limitCryptoEl = document.getElementById('limit-crypto');
+                    const incomeEuroEl = document.getElementById('income-euro');
+
+                    if (taxRateEl) taxRateEl.value = taxRate;
+                    if (limitFopEl) limitFopEl.value = limitFop;
+                    if (limitCryptoEl) limitCryptoEl.value = limitCrypto;
+                    if (incomeEuroEl) incomeEuroEl.value = incomeEuro;
+
+                    // Обновить курсы валют в интерфейсе
+                    if (lastRatesUpdate) {
+                        const ratesContainer = document.getElementById('exchange-rates');
+                        const lastUpdateEl = document.getElementById('last-update');
+
+                        if (ratesContainer) {
+                            ratesContainer.innerHTML = `
+                                <div class="rate-item">1€ = ${rateEURtoUAH.toFixed(2)} UAH</div>
+                                <div class="rate-item">1€ = ${rateEURtoBGN.toFixed(2)} BGN</div>
+                                <div class="rate-item">1 BGN = ${(rateEURtoUAH / rateEURtoBGN).toFixed(2)} UAH</div>
+                            `;
+                        }
+
+                        if (lastUpdateEl) {
+                            lastUpdateEl.textContent = lastRatesUpdate;
+                        }
+                    }
+
+                    // Пересчитать суммы категорий
+                    calculateCategoryAmounts();
+
+                    // Обновить все таблицы и графики
                     renderCategoriesTable();
                     renderExpensesTable();
                     updateBudgetSummary();
                     calculateReferenceAmounts();
+                    updateChart();
 
-                    alert('Данные успешно синхронизированы с сервером!');
+                    console.log('=== Синхронизация завершена успешно ===');
+                    alert('✅ Данные успешно синхронизированы с сервером!\n\nКатегорий: ' + categories.length + '\nРасходов: ' + (data.expenses ? data.expenses.length : 0));
                 } else {
-                    alert('Не удалось синхронизировать данные. Попробуйте позже.');
+                    console.error('Сервер вернул пустые данные');
+                    alert('⚠️ Не удалось синхронизировать данные.\n\nСервер вернул пустой ответ.');
                 }
 
                 updateConnectionStatus();
 
             } catch (error) {
                 console.error('Ошибка синхронизации:', error);
-                alert('Ошибка синхронизации: ' + error.message);
+                alert('❌ Ошибка синхронизации:\n\n' + error.message + '\n\nПроверьте консоль браузера (F12) для подробностей.');
+
+                if (statusEl) {
+                    statusEl.textContent = originalStatus;
+                }
                 updateConnectionStatus();
             }
         }
