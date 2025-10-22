@@ -295,6 +295,19 @@
             font-size: 14px;
             margin-top: 5px;
         }
+
+        .password-requirements {
+            background: #f8f9fa;
+            border-left: 3px solid #007bff;
+            padding: 10px;
+            margin: 15px 0;
+            font-size: 13px;
+            color: #666;
+        }
+
+        .password-requirements small {
+            line-height: 1.6;
+        }
         
         .expense-row-unsaved {
             background-color: #fff9e6;
@@ -390,6 +403,45 @@
         </div>
         <div id="login-error" class="error-message hidden"></div>
         <button onclick="login()">Войти</button>
+    </div>
+
+    <!-- Экран создания пароля (первый запуск) -->
+    <div id="setup-container" class="login-container hidden">
+        <h2>🔐 Добро пожаловать!</h2>
+        <p style="margin-bottom: 20px; color: #666;">
+            Это первый запуск приложения.<br>
+            Придумайте надёжный пароль для входа.
+        </p>
+
+        <div class="form-group">
+            <input
+                type="password"
+                id="setup-password"
+                placeholder="Новый пароль"
+                autocomplete="new-password"
+            >
+        </div>
+
+        <div class="form-group">
+            <input
+                type="password"
+                id="setup-password-confirm"
+                placeholder="Повторите пароль"
+                autocomplete="new-password"
+            >
+        </div>
+
+        <div class="password-requirements">
+            <small>
+                Требования к паролю:<br>
+                • Минимум 6 символов<br>
+                • Рекомендуется использовать буквы и цифры
+            </small>
+        </div>
+
+        <button onclick="createPassword()">Создать пароль</button>
+
+        <div id="setup-error" class="error-message hidden"></div>
     </div>
 
     <!-- Основное приложение -->
@@ -753,34 +805,160 @@
             return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
         }
         
-        async function initializePassword() {
-            const storedHash = localStorage.getItem('budgetAppPasswordHash');
-            if (!storedHash) {
-                // Первый запуск - устанавливаем дефолтный пароль "budget2025"
-                const defaultPassword = 'budget2025';
-                const hash = await hashPassword(defaultPassword);
-                localStorage.setItem('budgetAppPasswordHash', hash);
-                console.log('Установлен пароль по умолчанию: budget2025');
-            }
-        }
-        
         // ========================================
         // ФУНКЦИИ АВТОРИЗАЦИИ
         // ========================================
-        
+
+        async function checkPasswordSetup() {
+            // Проверка локального хеша
+            const localHash = localStorage.getItem('budgetAppPasswordHash');
+
+            if (localHash) {
+                // Есть локально - синхронизация с сервером при входе
+                return false;
+            }
+
+            // Нет локально - проверяем сервер
+            try {
+                await BudgetAPI.checkHealth();
+                const data = await BudgetAPI.loadData();
+
+                if (data.passwordHash) {
+                    // Есть на сервере - синхронизировать локально
+                    localStorage.setItem('budgetAppPasswordHash', data.passwordHash);
+                    console.log('✅ Пароль загружен с сервера');
+                    return false; // Не нужна форма создания
+                }
+            } catch (error) {
+                console.warn('⚠️ Сервер недоступен, используем локальные данные');
+            }
+
+            // Нет ни локально, ни на сервере - нужна форма создания
+            return true;
+        }
+
+        function showPasswordSetup() {
+            document.getElementById('login-container').style.display = 'none';
+            document.getElementById('app-container').style.display = 'none';
+            document.getElementById('setup-container').classList.remove('hidden');
+            document.getElementById('setup-container').style.display = 'block';
+        }
+
+        function showLoginScreen() {
+            document.getElementById('setup-container').style.display = 'none';
+            document.getElementById('app-container').style.display = 'none';
+            document.getElementById('login-container').style.display = 'block';
+        }
+
+        async function createPassword() {
+            const password = document.getElementById('setup-password').value;
+            const confirmPassword = document.getElementById('setup-password-confirm').value;
+            const errorDiv = document.getElementById('setup-error');
+
+            // Валидация
+            if (!password || !confirmPassword) {
+                errorDiv.textContent = 'Заполните все поля';
+                errorDiv.classList.remove('hidden');
+                return;
+            }
+
+            if (password !== confirmPassword) {
+                errorDiv.textContent = 'Пароли не совпадают';
+                errorDiv.classList.remove('hidden');
+                return;
+            }
+
+            if (password.length < 6) {
+                errorDiv.textContent = 'Пароль должен быть минимум 6 символов';
+                errorDiv.classList.remove('hidden');
+                return;
+            }
+
+            try {
+                // Хешировать пароль
+                const hash = await hashPassword(password);
+
+                // Сохранить локально
+                localStorage.setItem('budgetAppPasswordHash', hash);
+
+                // Попытка сохранить на сервер
+                try {
+                    await BudgetAPI.checkHealth();
+                    const data = await BudgetAPI.loadData();
+                    data.passwordHash = hash;
+                    await BudgetAPI.saveData(data);
+                    console.log('✅ Пароль сохранён на сервер');
+                } catch (error) {
+                    console.warn('⚠️ Не удалось сохранить пароль на сервер (оффлайн режим)');
+                    // Продолжаем работу - пароль сохранён локально
+                }
+
+                // Скрыть форму создания, показать приложение
+                errorDiv.classList.add('hidden');
+                document.getElementById('setup-container').style.display = 'none';
+                document.getElementById('app-container').style.display = 'block';
+
+                // Инициализировать приложение
+                await initializeApp();
+
+            } catch (error) {
+                errorDiv.textContent = 'Ошибка создания пароля';
+                errorDiv.classList.remove('hidden');
+                console.error(error);
+            }
+        }
+
+        async function migratePassword() {
+            const localHash = localStorage.getItem('budgetAppPasswordHash');
+
+            if (!localHash) {
+                return; // Новый пользователь - миграция не нужна
+            }
+
+            try {
+                const data = await BudgetAPI.loadData();
+
+                if (!data.passwordHash && localHash) {
+                    // Миграция: сохранить существующий локальный пароль на сервер
+                    data.passwordHash = localHash;
+                    await BudgetAPI.saveData(data);
+                    console.log('✅ Миграция: локальный пароль сохранён на сервер');
+                }
+            } catch (error) {
+                console.warn('⚠️ Миграция пароля не удалась (оффлайн режим)');
+            }
+        }
+
         async function login() {
             const password = document.getElementById('password').value;
             const errorDiv = document.getElementById('login-error');
-            
+
             if (!password) {
                 errorDiv.textContent = 'Введите пароль';
                 errorDiv.classList.remove('hidden');
                 return;
             }
-            
+
+            // Синхронизация с сервером перед входом
+            try {
+                await BudgetAPI.checkHealth();
+                const data = await BudgetAPI.loadData();
+
+                if (data.passwordHash) {
+                    const localHash = localStorage.getItem('budgetAppPasswordHash');
+                    if (localHash !== data.passwordHash) {
+                        // Пароль на сервере новее - обновить локально
+                        localStorage.setItem('budgetAppPasswordHash', data.passwordHash);
+                        console.log('✅ Пароль синхронизирован с сервера');
+                    }
+                }
+            } catch (error) {
+                console.warn('⚠️ Синхронизация пароля не удалась (оффлайн)');
+            }
+
             const hash = await hashPassword(password);
             const storedHash = localStorage.getItem('budgetAppPasswordHash');
-            
+
             if (hash === storedHash) {
                 errorDiv.classList.add('hidden');
                 document.getElementById('login-container').style.display = 'none';
@@ -842,17 +1020,32 @@
             
             // Сохранение нового пароля
             const newHash = await hashPassword(newPassword);
+
+            // Сохранить локально
             localStorage.setItem('budgetAppPasswordHash', newHash);
-            
-            messageDiv.textContent = 'Пароль успешно изменен!';
-            messageDiv.className = 'success-message';
+
+            // Сохранить на сервер
+            try {
+                const data = await BudgetAPI.loadData();
+                data.passwordHash = newHash;
+                await BudgetAPI.saveData(data);
+
+                messageDiv.textContent = '✅ Пароль успешно изменён и синхронизирован!';
+                messageDiv.className = 'success-message';
+                console.log('✅ Пароль изменён и сохранён на сервер');
+            } catch (error) {
+                messageDiv.textContent = '⚠️ Пароль изменён локально, но не синхронизирован с сервером';
+                messageDiv.className = 'success-message';
+                console.warn('⚠️ Не удалось сохранить пароль на сервер', error);
+            }
+
             messageDiv.classList.remove('hidden');
-            
+
             // Очистка полей
             document.getElementById('old-password').value = '';
             document.getElementById('new-password').value = '';
             document.getElementById('confirm-password').value = '';
-            
+
             setTimeout(() => {
                 messageDiv.classList.add('hidden');
             }, 3000);
@@ -2338,9 +2531,25 @@
         // ИНИЦИАЛИЗАЦИЯ ПРИ ЗАГРУЗКЕ СТРАНИЦЫ
         // ========================================
 
-        // Инициализировать дефолтный пароль при первом запуске
-        initializePassword();
-        
+        async function initPasswordFlow() {
+            // Миграция пароля для существующих пользователей
+            await migratePassword();
+
+            // Проверка статуса пароля
+            const needsSetup = await checkPasswordSetup();
+
+            if (needsSetup) {
+                // Показать форму создания пароля
+                showPasswordSetup();
+            } else {
+                // Показать обычный экран входа
+                showLoginScreen();
+            }
+        }
+
+        // Запустить инициализацию при загрузке страницы
+        initPasswordFlow();
+
     </script>
 </body>
 </html>

@@ -240,7 +240,7 @@ const BudgetAPI = {
         }
 
         // Объединяем данные
-        return {
+        const result = {
             categories: data.categories || [],
             expenses: expenses,
             settings: {
@@ -255,6 +255,13 @@ const BudgetAPI = {
                 lastRatesUpdate: data.lastRatesUpdate
             }
         };
+
+        // Добавляем passwordHash если он есть
+        if (data.passwordHash) {
+            result.passwordHash = data.passwordHash;
+        }
+
+        return result;
     },
 
     /**
@@ -274,6 +281,11 @@ const BudgetAPI = {
             totalIncomeBGN: data.settings.totalIncomeBGN,
             lastRatesUpdate: data.settings.lastRatesUpdate
         };
+
+        // Добавляем passwordHash если он есть
+        if (data.passwordHash) {
+            budgetData.passwordHash = data.passwordHash;
+        }
 
         localStorage.setItem('budgetAppData', JSON.stringify(budgetData));
         localStorage.setItem('budgetAppExpenses', JSON.stringify(data.expenses));
