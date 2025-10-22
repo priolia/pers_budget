@@ -1191,6 +1191,38 @@
             // Список API источников (в порядке приоритета)
             const apiSources = [
                 {
+                    name: 'Monobank',
+                    url: 'https://api.monobank.ua/bank/currency',
+                    parse: (data) => {
+                        // Monobank возвращает массив курсов
+                        // Коды валют: EUR=978, UAH=980, BGN=975
+                        const rates = {};
+
+                        // Ищем EUR/UAH
+                        const eurUah = data.find(item =>
+                            item.currencyCodeA === 978 && item.currencyCodeB === 980
+                        );
+                        if (eurUah) {
+                            // Используем курс продажи, если доступен, иначе кросс-курс
+                            rates.UAH = eurUah.rateSell || eurUah.rateCross;
+                        }
+
+                        // Ищем EUR/BGN (может не быть прямой пары)
+                        const eurBgn = data.find(item =>
+                            item.currencyCodeA === 978 && item.currencyCodeB === 975
+                        );
+                        if (eurBgn) {
+                            rates.BGN = eurBgn.rateSell || eurBgn.rateCross;
+                        } else {
+                            // Если нет прямой пары EUR/BGN, используем фиксированный курс
+                            // BGN привязан к EUR: 1 EUR = 1.95583 BGN (официальный курс ЕЦБ)
+                            rates.BGN = 1.95583;
+                        }
+
+                        return rates;
+                    }
+                },
+                {
                     name: 'ExchangeRate-API',
                     url: 'https://open.er-api.com/v6/latest/EUR',
                     parse: (data) => ({
