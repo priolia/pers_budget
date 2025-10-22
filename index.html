@@ -314,20 +314,35 @@
             text-decoration: underline;
         }
         
+        /* Настройка ширины столбцов в таблице трат */
+        #expenses-table th:nth-child(2),
+        #expenses-table td:nth-child(2) {
+            min-width: 250px;
+            width: 30%;
+        }
+
+        #expenses-table th:nth-child(6),
+        #expenses-table th:nth-child(7),
+        #expenses-table th:nth-child(8) {
+            font-size: 11px;
+            line-height: 1.2;
+            padding: 6px 8px;
+        }
+
         @media (max-width: 768px) {
             .container {
                 padding: 10px;
             }
-            
+
             .sections {
                 flex-direction: column;
             }
-            
+
             .period-selector {
                 flex-direction: column;
                 align-items: stretch;
             }
-            
+
             .period-selector select,
             .period-selector input {
                 width: 100%;
@@ -352,6 +367,7 @@
         <div class="container" style="position: relative;">
             <div class="user-info">
                 <span id="connection-status" title="Статус подключения к серверу">🔄</span> |
+                <button class="button-secondary" onclick="syncWithServer()" style="padding: 5px 10px; font-size: 12px;">🔄 Синхронизировать</button> |
                 <span class="settings-link" onclick="showTab('settings')">⚙️ Настройки</span> |
                 <span class="settings-link" onclick="logout()">Выход</span>
             </div>
@@ -405,7 +421,9 @@
             
             <!-- Вкладка "Бюджет" -->
             <div id="budget-tab" class="tab-content active">
-                <h2>Сводка бюджета</h2>
+                <h2>Сводка бюджета
+                    <button class="button-secondary" onclick="updateBudgetSummary()" style="padding: 5px 10px; font-size: 12px; margin-left: 10px;">🔄 Обновить</button>
+                </h2>
                 <div class="table-container">
                     <table id="budget-summary-table">
                         <thead>
@@ -499,9 +517,9 @@
                                 <th>Категория</th>
                                 <th>Сумма</th>
                                 <th>Валюта</th>
-                                <th>Сумма план (€)</th>
-                                <th>Бюджетный реф (грн)</th>
-                                <th>Бюджетный реф (€)</th>
+                                <th>Сумма<br>план (€)</th>
+                                <th>Бюджет<br>реф (грн)</th>
+                                <th>Бюджет<br>реф (€)</th>
                                 <th>Действия</th>
                             </tr>
                         </thead>
@@ -1621,8 +1639,12 @@
         
         function renderExpensesTable() {
             const tableBody = document.querySelector('#expenses-table tbody');
-            tableBody.innerHTML = '';
-            
+
+            // ИСПРАВЛЕНИЕ БАГ #4: Полная очистка таблицы, включая все дочерние элементы
+            while (tableBody.firstChild) {
+                tableBody.removeChild(tableBody.firstChild);
+            }
+
             // Загрузить расходы за текущий период
             const periodExpenses = getExpensesForPeriod(currentYear, currentMonth);
             
@@ -1809,9 +1831,9 @@
             document.getElementById('summary-plan').textContent = 
                 `${totalPlanExpensesEuro.toFixed(2)} из ${incomeEuro.toFixed(2)}`;
             
-            // 4. НОВОЕ: Запланировано из бюджета (%)
-            const plannedPercentage = incomeEuro > 0 ? (totalPlanExpensesEuro / incomeEuro * 100) : 0;
-            document.getElementById('budget-planned-percentage').textContent = 
+            // 4. ИСПРАВЛЕНО: Запланировано из бюджета (%) - сумма процентов из справочника
+            const plannedPercentage = categories.reduce((sum, cat) => sum + (cat.percentage || 0), 0);
+            document.getElementById('budget-planned-percentage').textContent =
                 plannedPercentage.toFixed(2) + '%';
             
             // 5. Остается после планируемых = доход - факт
@@ -2104,6 +2126,70 @@
                 // Fallback на дефолтные категории
                 categories = JSON.parse(JSON.stringify(defaultCategories));
                 calculateCategoryAmounts();
+            }
+        }
+
+        // ========================================
+        // СИНХРОНИЗАЦИЯ С СЕРВЕРОМ
+        // ========================================
+
+        async function syncWithServer() {
+            const statusEl = document.getElementById('connection-status');
+            if (statusEl) {
+                statusEl.textContent = '🔄';
+                statusEl.title = 'Синхронизация...';
+            }
+
+            try {
+                console.log('Принудительная синхронизация с сервером...');
+
+                // Проверить доступность сервера
+                const isOnline = await BudgetAPI.checkHealth();
+
+                if (!isOnline) {
+                    alert('Сервер недоступен. Проверьте подключение к интернету.');
+                    updateConnectionStatus();
+                    return;
+                }
+
+                // Загрузить данные с сервера
+                const data = await BudgetAPI.sync();
+
+                if (data) {
+                    // Обновить локальные данные
+                    if (data.categories && data.categories.length > 0) {
+                        categories = data.categories;
+                    }
+
+                    if (data.settings) {
+                        if (data.settings.rateEURtoUAH) rateEURtoUAH = data.settings.rateEURtoUAH;
+                        if (data.settings.rateEURtoBGN) rateEURtoBGN = data.settings.rateEURtoBGN;
+                        if (data.settings.taxRate !== undefined) taxRate = data.settings.taxRate;
+                        if (data.settings.limitFop !== undefined) limitFop = data.settings.limitFop;
+                        if (data.settings.limitCrypto !== undefined) limitCrypto = data.settings.limitCrypto;
+                        if (data.settings.incomeEuro !== undefined) incomeEuro = data.settings.incomeEuro;
+                        if (data.settings.totalIncomeUAH !== undefined) totalIncomeUAH = data.settings.totalIncomeUAH;
+                        if (data.settings.totalIncomeBGN !== undefined) totalIncomeBGN = data.settings.totalIncomeBGN;
+                        if (data.settings.lastRatesUpdate) lastRatesUpdate = data.settings.lastRatesUpdate;
+                    }
+
+                    // Обновить интерфейс
+                    renderCategoriesTable();
+                    renderExpensesTable();
+                    updateBudgetSummary();
+                    calculateReferenceAmounts();
+
+                    alert('Данные успешно синхронизированы с сервером!');
+                } else {
+                    alert('Не удалось синхронизировать данные. Попробуйте позже.');
+                }
+
+                updateConnectionStatus();
+
+            } catch (error) {
+                console.error('Ошибка синхронизации:', error);
+                alert('Ошибка синхронизации: ' + error.message);
+                updateConnectionStatus();
             }
         }
         
