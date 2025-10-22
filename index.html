@@ -775,8 +775,8 @@
         // ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ И НАЧАЛЬНЫЕ НАСТРОЙКИ
         // ========================================
         
-        let rateEURtoUAH = 41.5;
-        let rateEURtoBGN = 1.96;
+        let rateEURtoUAH = 48.40;  // Обновлено: актуальный курс на октябрь 2025
+        let rateEURtoBGN = 1.9558; // Обновлено: актуальный курс на октябрь 2025
         let taxRate = 7.3;
         let limitFop = 2200;
         let limitCrypto = 1100;
@@ -1183,47 +1183,102 @@
             const loader = document.getElementById('rate-loader');
             const ratesContainer = document.getElementById('exchange-rates');
             const lastUpdateEl = document.getElementById('last-update');
-            
+
             if (loader) {
                 loader.style.display = 'inline-block';
             }
-            
-            try {
-                // Используем один запрос для обеих валют
-                const response = await fetch('https://api.exchangerate.host/latest?base=EUR&symbols=UAH,BGN');
-                const data = await response.json();
-                
-                if (data.rates) {
-                    if (data.rates.UAH) rateEURtoUAH = data.rates.UAH;
-                    if (data.rates.BGN) rateEURtoBGN = data.rates.BGN;
+
+            // Список API источников (в порядке приоритета)
+            const apiSources = [
+                {
+                    name: 'ExchangeRate-API',
+                    url: 'https://open.er-api.com/v6/latest/EUR',
+                    parse: (data) => ({
+                        UAH: data.rates?.UAH,
+                        BGN: data.rates?.BGN
+                    })
+                },
+                {
+                    name: 'ExchangeRate.host',
+                    url: 'https://api.exchangerate.host/latest?base=EUR&symbols=UAH,BGN',
+                    parse: (data) => ({
+                        UAH: data.rates?.UAH,
+                        BGN: data.rates?.BGN
+                    })
                 }
-                
+            ];
+
+            let success = false;
+            let apiUsed = '';
+
+            // Пробуем каждый API по очереди
+            for (const source of apiSources) {
+                try {
+                    console.log(`Пробуем получить курсы из ${source.name}...`);
+                    const response = await fetch(source.url);
+
+                    if (!response.ok) {
+                        console.warn(`${source.name}: HTTP ${response.status}`);
+                        continue;
+                    }
+
+                    const data = await response.json();
+                    const rates = source.parse(data);
+
+                    // Проверяем валидность данных
+                    if (rates.UAH && rates.BGN && rates.UAH > 0 && rates.BGN > 0) {
+                        // Дополнительная проверка на разумность курсов
+                        // EUR/UAH должен быть примерно 40-60, EUR/BGN примерно 1.90-2.00
+                        if (rates.UAH >= 35 && rates.UAH <= 70 && rates.BGN >= 1.85 && rates.BGN <= 2.05) {
+                            rateEURtoUAH = rates.UAH;
+                            rateEURtoBGN = rates.BGN;
+                            apiUsed = source.name;
+                            success = true;
+                            console.log(`✅ Курсы успешно получены из ${source.name}:`, { UAH: rates.UAH, BGN: rates.BGN });
+                            break;
+                        } else {
+                            console.warn(`${source.name}: Подозрительные курсы:`, rates);
+                        }
+                    } else {
+                        console.warn(`${source.name}: Неполные данные:`, rates);
+                    }
+                } catch (error) {
+                    console.warn(`${source.name}: Ошибка -`, error.message);
+                }
+            }
+
+            try {
                 lastRatesUpdate = new Date().toLocaleString('ru-RU');
-                
+
                 // Обновляем информацию о курсах
                 if (ratesContainer) {
+                    const statusText = success
+                        ? `<span style="color: green; font-size: 11px;">✓ ${apiUsed}</span>`
+                        : `<span style="color: orange; font-size: 11px;">⚠ Используются сохраненные значения</span>`;
+
                     ratesContainer.innerHTML = `
                         <div class="rate-item">1€ = ${rateEURtoUAH.toFixed(2)} UAH</div>
                         <div class="rate-item">1€ = ${rateEURtoBGN.toFixed(2)} BGN</div>
-                        <div class="rate-item">1 BGN = ${(rateEURtoUAH / rateEURtoBGN).toFixed(2)} UAH</div>
+                        <div class="rate-item">1 BGN = ${(rateEURtoUAH / rateEURtoBGN).toFixed(2)} UAH ${statusText}</div>
                     `;
                 }
-                
+
                 if (lastUpdateEl) {
                     lastUpdateEl.textContent = lastRatesUpdate;
                 }
-                
-                console.log('Курсы валют успешно загружены:', { rateEURtoUAH, rateEURtoBGN });
-                
+
                 // Пересчитываем суммы с новыми курсами
                 calculateReferenceAmounts();
                 updateBudgetSummary();
-                saveData();
+
+                if (success) {
+                    saveData(); // Сохраняем только если успешно загрузили
+                }
             } catch (error) {
-                console.error('Ошибка загрузки курсов валют:', error);
+                console.error('Ошибка обновления интерфейса:', error);
                 if (ratesContainer) {
                     ratesContainer.innerHTML = `
-                        <div class="rate-item" style="color: red;">Ошибка загрузки курсов. Используются значения по умолчанию.</div>
+                        <div class="rate-item" style="color: red;">Ошибка обновления. Используются значения по умолчанию.</div>
                         <div class="rate-item">1€ = ${rateEURtoUAH.toFixed(2)} UAH</div>
                         <div class="rate-item">1€ = ${rateEURtoBGN.toFixed(2)} BGN</div>
                     `;
