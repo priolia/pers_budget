@@ -328,10 +328,13 @@
         }
         
         /* Настройка ширины столбцов в таблице трат */
+        /* Детали операции и Категория - одинаковая ширина */
         #expenses-table th:nth-child(2),
-        #expenses-table td:nth-child(2) {
-            min-width: 250px;
-            width: 30%;
+        #expenses-table td:nth-child(2),
+        #expenses-table th:nth-child(3),
+        #expenses-table td:nth-child(3) {
+            min-width: 200px;
+            width: 25%;
         }
 
         /* Уменьшение шрифта для даты и часа */
@@ -339,14 +342,17 @@
             font-size: 12px;
         }
 
-        /* Поле суммы - такой же размер как категория */
-        #expenses-table td:nth-child(4) input {
-            width: 100%;
+        /* Сумма и Валюта - одинаковая ширина */
+        #expenses-table th:nth-child(4),
+        #expenses-table td:nth-child(4),
+        #expenses-table th:nth-child(5),
+        #expenses-table td:nth-child(5) {
+            width: 90px;
+            min-width: 90px;
+            max-width: 90px;
         }
 
-        /* Одинаковая ширина для столбцов 5-8 (Валюта, Сумма план, Бюджет реф) */
-        #expenses-table th:nth-child(5),
-        #expenses-table td:nth-child(5),
+        /* Одинаковая ширина для столбцов 6-8 (Сумма план, Бюджет реф) */
         #expenses-table th:nth-child(6),
         #expenses-table td:nth-child(6),
         #expenses-table th:nth-child(7),
@@ -579,13 +585,20 @@
             <!-- Вкладка "Траты" -->
             <div id="expenses-tab" class="tab-content">
                 <h2>Учет трат за <span id="expenses-period-title"></span></h2>
-                
+
                 <div class="form-group">
                     <button onclick="addNewExpense()">Добавить расход</button>
                     <button class="button-secondary" onclick="exportExpenses()">Экспорт текущего периода</button>
                     <button class="button-danger" onclick="clearExpenses()">Очистить все</button>
                 </div>
-                
+
+                <div class="form-group" style="display: flex; gap: 10px; align-items: center;">
+                    <label for="category-filter" style="margin: 0;">Фильтр по категории:</label>
+                    <select id="category-filter" onchange="filterExpensesByCategory()" style="width: 250px;">
+                        <option value="">Все категории</option>
+                    </select>
+                </div>
+
                 <div id="expense-message" class="hidden"></div>
                 
                 <div class="table-container">
@@ -593,7 +606,7 @@
                         <thead>
                             <tr>
                                 <th>Дата и час</th>
-                                <th>Деталі операції</th>
+                                <th>Детали операции</th>
                                 <th>Категория</th>
                                 <th>Сумма</th>
                                 <th>Валюта</th>
@@ -1495,31 +1508,87 @@
         function calculateCategoryAmounts() {
             totalIncomeUAH = incomeEuro * rateEURtoUAH;
             totalIncomeBGN = incomeEuro * rateEURtoBGN;
-            
+
             categories.forEach(category => {
                 category.amount = (category.limit * rateEURtoUAH).toFixed(2);
             });
         }
-        
+
+        async function updateCategoryOnServer(button) {
+            const row = button.closest('tr');
+            const rowIndex = Array.from(row.parentElement.children).indexOf(row);
+
+            // Получить текущие значения из строки
+            const limitInput = row.querySelector('.category-limit');
+            const percentageInput = row.querySelector('.category-percentage');
+
+            const newLimit = parseFloat(limitInput.value) || 0;
+            const newPercentage = parseFloat(percentageInput.value) || 0;
+
+            // Валидация
+            if (newLimit < 0) {
+                alert('Лимит не может быть отрицательным');
+                return;
+            }
+
+            if (newPercentage < 0 || newPercentage > 100) {
+                alert('Процент должен быть от 0 до 100');
+                return;
+            }
+
+            // Обновить категорию локально
+            categories[rowIndex].limit = newLimit;
+            categories[rowIndex].percentage = newPercentage;
+
+            // Пересчитать сумму
+            calculateCategoryAmounts();
+
+            // Обновить отображение суммы в строке
+            const amountCell = row.querySelector('.category-amount');
+            amountCell.textContent = categories[rowIndex].amount || '0.00';
+
+            // Сохранить на сервере
+            try {
+                await saveData();
+                alert('✅ Изменения успешно сохранены на сервере');
+
+                // Обновить бюджет и график
+                updateBudgetSummary();
+                if (typeof updateChart === 'function') {
+                    updateChart();
+                }
+
+                // Обновить оставшиеся лимиты для этой категории
+                updateRemainingLimitsForCategory(categories[rowIndex].name);
+            } catch (error) {
+                console.error('Ошибка сохранения на сервере:', error);
+                alert('⚠️ Не удалось сохранить на сервер. Изменения сохранены локально.');
+            }
+        }
+
         function renderCategoriesTable() {
             const tableBody = document.querySelector('#categories-table tbody');
             tableBody.innerHTML = '';
-            
+
             categories.forEach((category, index) => {
                 const row = document.createElement('tr');
-                
+
                 row.innerHTML = `
                     <td><input type="text" class="category-name" value="${category.name}" onchange="updateCategoryName(this)"></td>
                     <td><input type="number" step="0.01" min="0" class="category-limit" value="${category.limit}" onchange="updateCategoryLimit(this)"></td>
                     <td><input type="number" step="0.01" min="0" max="100" class="category-percentage" value="${category.percentage}" onchange="updateCategoryPercentage(this)"></td>
                     <td class="category-amount">${category.amount || '0.00'}</td>
                     <td>
+                        <button class="button-secondary" onclick="updateCategoryOnServer(this)" title="Сохранить изменения на сервере">🔄</button>
                         <button class="button-danger" onclick="deleteCategory(this)">🗑️</button>
                     </td>
                 `;
-                
+
                 tableBody.appendChild(row);
             });
+
+            // Обновить фильтр категорий на вкладке Траты
+            updateCategoryFilter();
         }
         
         // ========================================
@@ -1890,8 +1959,14 @@
             }
 
             // Загрузить расходы за текущий период
-            const periodExpenses = getExpensesForPeriod(currentYear, currentMonth);
-            
+            let periodExpenses = getExpensesForPeriod(currentYear, currentMonth);
+
+            // Применить фильтр по категории, если выбран
+            const categoryFilter = document.getElementById('category-filter');
+            if (categoryFilter && categoryFilter.value) {
+                periodExpenses = periodExpenses.filter(expense => expense.category === categoryFilter.value);
+            }
+
             if (periodExpenses.length === 0) {
                 // Если нет расходов, можно добавить пустую строку или просто оставить таблицу пустой
             } else {
@@ -1950,22 +2025,57 @@
         
         function calculateExpenseTotals() {
             const periodExpenses = getExpensesForPeriod(currentYear, currentMonth);
-            
+
             let totalUAH = 0;
             let totalBGN = 0;
             let totalEUR = 0;
-            
+
             periodExpenses.forEach(expense => {
                 totalUAH += expense.amountUAH || 0;
                 totalBGN += expense.amountBGN || 0;
                 totalEUR += expense.amountEUR || 0;
             });
-            
+
             document.getElementById('expenses-total-uah').textContent = totalUAH.toFixed(2);
             document.getElementById('expenses-total-bgn').textContent = totalBGN.toFixed(2);
             document.getElementById('expenses-total-euro').textContent = totalEUR.toFixed(2);
         }
-        
+
+        // ========================================
+        // ФИЛЬТРАЦИЯ РАСХОДОВ ПО КАТЕГОРИЯМ
+        // ========================================
+
+        function updateCategoryFilter() {
+            const categoryFilter = document.getElementById('category-filter');
+            if (!categoryFilter) return;
+
+            // Сохранить текущее значение фильтра
+            const currentValue = categoryFilter.value;
+
+            // Очистить и добавить опцию "Все категории"
+            categoryFilter.innerHTML = '<option value="">Все категории</option>';
+
+            // Добавить все категории
+            categories.forEach(category => {
+                const option = document.createElement('option');
+                option.value = category.name;
+                option.textContent = category.name;
+                categoryFilter.appendChild(option);
+            });
+
+            // Восстановить выбранное значение, если оно еще существует
+            if (currentValue) {
+                const optionExists = Array.from(categoryFilter.options).some(opt => opt.value === currentValue);
+                if (optionExists) {
+                    categoryFilter.value = currentValue;
+                }
+            }
+        }
+
+        function filterExpensesByCategory() {
+            renderExpensesTable();
+        }
+
         // ========================================
         // ОБНОВЛЕНИЕ СВОДКИ БЮДЖЕТА (ИЗМЕНЕНО)
         // ========================================
