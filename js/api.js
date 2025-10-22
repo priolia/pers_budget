@@ -138,7 +138,7 @@ class BudgetAPIClass {
      */
     async pushCategories(categories) {
         if (!CONFIG.API.USE_API) {
-            return this.saveCategoriesTo LocalStorage(categories);
+            return this.saveCategoriesToLocalStorage(categories);
         }
 
         const data = {
