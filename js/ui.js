@@ -327,6 +327,10 @@ export class UIManager {
             const remaining = Math.max(0, category.limit - spent);
             const percentage = category.limit > 0 ? (spent / category.limit * 100) : 0;
 
+            // Получить курс UAH
+            const rateEURtoUAH = config.settings?.rateEURtoUAH || config.rateEURtoUAH || 48.40;
+            const amountUAH = category.limit * rateEURtoUAH;
+
             const row = document.createElement('tr');
             row.dataset.categoryId = category.id;
 
@@ -345,21 +349,24 @@ export class UIManager {
 
             row.innerHTML = `
                 <td>
+                    <input type="number" min="1" class="category-order" style="width: 60px;"
+                           value="${category.order || 1}" data-original="${category.order || 1}">
+                </td>
+                <td>
                     <input type="text" class="category-name" value="${category.name}"
                            data-original="${category.name}">
                 </td>
                 <td>
                     <input type="number" step="0.01" min="0" class="category-limit"
-                           value="${category.limit}" data-original="${category.limit}">
+                           value="${category.limit}" data-original="${category.limit}"
+                           onchange="window.BudgetApp.UIManager.onLimitChange(this)">
                 </td>
                 <td>
                     <input type="number" step="0.01" min="0" max="100" class="category-percentage"
-                           value="${category.percentage || 0}" data-original="${category.percentage || 0}">
+                           value="${category.percentage || 0}" data-original="${category.percentage || 0}"
+                           onchange="window.BudgetApp.UIManager.onPercentageChange(this)">
                 </td>
-                <td>
-                    <input type="number" min="1" class="category-order"
-                           value="${category.order || 1}" data-original="${category.order || 1}">
-                </td>
+                <td>${amountUAH.toFixed(2)}</td>
                 <td>${spent.toFixed(2)}</td>
                 <td>${remaining.toFixed(2)}</td>
                 <td>${percentage.toFixed(2)}%</td>
@@ -409,26 +416,43 @@ export class UIManager {
             const category = categories.find(cat => cat.id === expense.categoryId);
             const categoryName = category ? category.name : 'Не указана';
 
-            // Расчет оставшегося лимита (ВКЛЮЧАЯ текущую операцию)
+            // Расчет оставшегося лимита ПОСЛЕ этой операции
             const spent = this.getCategorySpentAmount(expense.categoryId);
             const remaining = category ? (category.limit - spent) : 0;
-            const budgetPercentage = category ? (category.percentage || 0) : 0;
+            const budgetRefEuro = category ? category.limit : 0;
+            const budgetRefPercent = category ? (category.percentage || 0) : 0;
+
+            // Преобразовать дату в формат для datetime-local
+            const date = new Date(expense.date);
+            const dateValue = date.toISOString().slice(0, 16);
 
             const row = document.createElement('tr');
             row.className = 'expense-row';
+            row.dataset.expenseId = expense.id;
 
             row.innerHTML = `
-                <td>${DateUtils.formatDateTime(expense.date)}</td>
-                <td>${expense.description}</td>
-                <td>${categoryName}</td>
-                <td>${expense.amount.toFixed(2)}</td>
-                <td>${expense.currency}</td>
-                <td>${expense.amountEUR.toFixed(2)}</td>
-                <td>${remaining.toFixed(2)}</td>
-                <td>${category ? category.limit.toFixed(2) : '0.00'}</td>
-                <td>${budgetPercentage.toFixed(2)}%</td>
+                <td><input type="datetime-local" class="expense-date" value="${dateValue}"></td>
+                <td><input type="text" class="expense-description" value="${expense.description}"></td>
                 <td>
-                    <button class="button-secondary" onclick="window.BudgetApp.UIManager.editExpense('${expense.id}')" title="Редактировать">✏️</button>
+                    <select class="category-select">
+                        ${categories.map(cat =>
+                            `<option value="${cat.id}" ${cat.id === expense.categoryId ? 'selected' : ''}>${cat.name}</option>`
+                        ).join('')}
+                    </select>
+                </td>
+                <td><input type="number" step="0.01" min="0" class="expense-amount" value="${expense.amount}"></td>
+                <td>
+                    <select class="currency-select">
+                        <option value="EUR" ${expense.currency === 'EUR' ? 'selected' : ''}>€</option>
+                        <option value="UAH" ${expense.currency === 'UAH' ? 'selected' : ''}>UAH</option>
+                        <option value="BGN" ${expense.currency === 'BGN' ? 'selected' : ''}>BGN</option>
+                    </select>
+                </td>
+                <td class="readonly-field">${remaining.toFixed(2)}</td>
+                <td class="readonly-field">${budgetRefEuro.toFixed(2)}</td>
+                <td class="readonly-field">${budgetRefPercent.toFixed(2)}</td>
+                <td>
+                    <button class="button-secondary" onclick="window.BudgetApp.UIManager.updateExpenseInline('${expense.id}')" title="Обновить">🔄</button>
                     <button class="button-danger" onclick="window.BudgetApp.UIManager.deleteExpense('${expense.id}')" title="Удалить">🗑️</button>
                 </td>
             `;
@@ -610,6 +634,50 @@ export class UIManager {
         } catch (error) {
             console.error('❌ Ошибка удаления категории:', error);
             alert('Ошибка удаления категории');
+        }
+    }
+
+    /**
+     * Автопересчет лимита при изменении процента
+     * @param {HTMLElement} input - Поле ввода процента
+     */
+    static onPercentageChange(input) {
+        const row = input.closest('tr');
+        const percentage = parseFloat(input.value) || 0;
+
+        // Получить доход из настроек
+        const config = DataManager.getConfig();
+        const incomeEuro = config.settings?.incomeEuro || config.incomeEuro || 0;
+
+        // Пересчитать лимит
+        const newLimit = (incomeEuro * percentage / 100).toFixed(2);
+
+        // Обновить поле лимита
+        const limitInput = row.querySelector('.category-limit');
+        if (limitInput) {
+            limitInput.value = newLimit;
+        }
+    }
+
+    /**
+     * Автопересчет процента при изменении лимита
+     * @param {HTMLElement} input - Поле ввода лимита
+     */
+    static onLimitChange(input) {
+        const row = input.closest('tr');
+        const limit = parseFloat(input.value) || 0;
+
+        // Получить доход из настроек
+        const config = DataManager.getConfig();
+        const incomeEuro = config.settings?.incomeEuro || config.incomeEuro || 0;
+
+        // Пересчитать процент
+        const newPercentage = incomeEuro > 0 ? ((limit / incomeEuro) * 100).toFixed(2) : 0;
+
+        // Обновить поле процента
+        const percentageInput = row.querySelector('.category-percentage');
+        if (percentageInput) {
+            percentageInput.value = newPercentage;
         }
     }
 
@@ -800,6 +868,66 @@ export class UIManager {
     static cancelExpense(button) {
         const row = button.closest('tr');
         row.remove();
+    }
+
+    /**
+     * Обновление расхода прямо в таблице (inline)
+     * @param {string} expenseId - ID расхода
+     */
+    static async updateExpenseInline(expenseId) {
+        const row = document.querySelector(`tr[data-expense-id="${expenseId}"]`);
+        if (!row) {
+            alert('Расход не найден');
+            return;
+        }
+
+        // Получить данные из полей
+        const date = row.querySelector('.expense-date').value;
+        const description = row.querySelector('.expense-description').value.trim();
+        const categoryId = row.querySelector('.category-select').value;
+        const amount = parseFloat(row.querySelector('.expense-amount').value);
+        const currency = row.querySelector('.currency-select').value;
+
+        // Валидация
+        if (!date || !description || !categoryId || !amount || amount <= 0) {
+            alert('Заполните все обязательные поля корректно');
+            return;
+        }
+
+        // Конвертация валют
+        const config = DataManager.getConfig();
+        const rates = {
+            rateEURtoUAH: config.settings?.rateEURtoUAH || config.rateEURtoUAH || 48.40,
+            rateEURtoBGN: config.settings?.rateEURtoBGN || config.rateEURtoBGN || 1.9558
+        };
+
+        const converted = CurrencyUtils.convertToAll(amount, currency, rates);
+
+        const expenseData = {
+            categoryId,
+            date: new Date(date).toISOString(),
+            description,
+            amount,
+            currency,
+            amountEUR: converted.EUR,
+            amountUAH: converted.UAH,
+            amountBGN: converted.BGN
+        };
+
+        try {
+            DataManager.updateExpense(expenseId, expenseData);
+            await window.BudgetApp.saveData();
+
+            // Обновить таблицы
+            this.renderExpensesTable();
+            this.renderReferenceTable();
+            this.renderBudgetSummary();
+
+            console.log('✅ Расход обновлен');
+        } catch (error) {
+            console.error('❌ Ошибка обновления расхода:', error);
+            alert('Ошибка обновления расхода');
+        }
     }
 
     /**
