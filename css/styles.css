@@ -1,0 +1,494 @@
+/**
+ * Budget App v2.0 - Styles
+ */
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 20px;
+    background-color: #f5f5f5;
+}
+
+.container {
+    max-width: 1400px;
+    margin: 0 auto;
+    background-color: white;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+}
+
+h1, h2, h3 {
+    color: #333;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 15px 0;
+}
+
+th, td {
+    border: 1px solid #ddd;
+    padding: 8px 12px;
+    text-align: left;
+}
+
+th {
+    background-color: #f2f2f2;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.total-row {
+    font-weight: bold;
+    background-color: #e9e9e9;
+}
+
+/* Цветовая индикация по ТЗ */
+.budget-under-50 {
+    background-color: #c8e6c9;
+    color: #2e7d32;
+}
+
+.budget-50-90 {
+    background-color: #fff9c4;
+    color: #f57f17;
+}
+
+.budget-90-100 {
+    background-color: #ffccbc;
+    color: #d84315;
+}
+
+.budget-over-100 {
+    background-color: #ffcdd2;
+    color: #c62828;
+    text-decoration: line-through;
+}
+
+.form-group {
+    margin-bottom: 15px;
+}
+
+label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: bold;
+}
+
+input, select {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    box-sizing: border-box;
+}
+
+input:invalid {
+    border-color: #d32f2f;
+}
+
+button {
+    background-color: #4CAF50;
+    color: white;
+    padding: 10px 15px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    margin-right: 5px;
+    margin-bottom: 5px;
+}
+
+button:hover {
+    background-color: #45a049;
+}
+
+button:disabled {
+    background-color: #cccccc;
+    cursor: not-allowed;
+}
+
+.button-secondary {
+    background-color: #2196F3;
+}
+
+.button-secondary:hover {
+    background-color: #0b7dda;
+}
+
+.button-danger {
+    background-color: #f44336;
+}
+
+.button-danger:hover {
+    background-color: #d32f2f;
+}
+
+.sections {
+    display: flex;
+    gap: 20px;
+    margin-top: 20px;
+    flex-wrap: wrap;
+}
+
+.section {
+    flex: 1;
+    min-width: 300px;
+    padding: 15px;
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 0 5px rgba(0,0,0,0.1);
+}
+
+.login-container {
+    max-width: 400px;
+    margin: 100px auto;
+    padding: 20px;
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    text-align: center;
+}
+
+#app-container {
+    display: none;
+}
+
+.tabs {
+    display: flex;
+    border-bottom: 1px solid #ccc;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+
+.tab {
+    padding: 10px 15px;
+    cursor: pointer;
+    background-color: #f1f1f1;
+    margin-right: 5px;
+    margin-bottom: -1px;
+    border-radius: 5px 5px 0 0;
+    border: 1px solid #ccc;
+    border-bottom: none;
+}
+
+.tab.active {
+    background-color: white;
+    border-bottom: 1px solid white;
+    font-weight: bold;
+}
+
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+.chart-container {
+    height: 300px;
+    margin: 20px 0;
+}
+
+.hidden {
+    display: none;
+}
+
+.table-container {
+    overflow-x: auto;
+    max-height: 500px;
+    overflow-y: auto;
+}
+
+.total-section {
+    margin-top: 20px;
+    padding: 15px;
+    background-color: #f9f9f9;
+    border-radius: 8px;
+    border: 1px solid #ddd;
+}
+
+.exchange-info {
+    background-color: #e7f3fe;
+    border-left: 5px solid #2196F3;
+    padding: 10px;
+    margin-bottom: 15px;
+    font-size: 14px;
+}
+
+.rates-container {
+    display: flex;
+    gap: 15px;
+    flex-wrap: wrap;
+}
+
+.rate-item {
+    background-color: #f9f9f9;
+    border-radius: 5px;
+    padding: 8px 12px;
+    font-size: 14px;
+    border: 1px solid #ddd;
+}
+
+.loader {
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid #3498db;
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+    animation: spin 2s linear infinite;
+    display: inline-block;
+    vertical-align: middle;
+    margin-right: 10px;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.readonly-field {
+    background-color: #f5f5f5;
+    color: #666;
+    cursor: not-allowed;
+}
+
+.period-selector {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 15px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.period-selector label {
+    margin: 0;
+    font-weight: normal;
+}
+
+.period-selector select,
+.period-selector input {
+    width: auto;
+    min-width: 120px;
+}
+
+.error-message {
+    color: #d32f2f;
+    font-size: 14px;
+    margin-top: 5px;
+}
+
+.success-message {
+    color: #2e7d32;
+    font-size: 14px;
+    margin-top: 5px;
+}
+
+.password-requirements {
+    background: #f8f9fa;
+    border-left: 3px solid #007bff;
+    padding: 10px;
+    margin: 15px 0;
+    font-size: 13px;
+    color: #666;
+}
+
+.password-requirements small {
+    line-height: 1.6;
+}
+
+.expense-row-unsaved {
+    background-color: #fff9e6;
+}
+
+.user-info {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    text-align: right;
+    font-size: 14px;
+}
+
+.settings-link {
+    color: #2196F3;
+    cursor: pointer;
+    text-decoration: underline;
+}
+
+/* Настройка ширины столбцов в таблице трат */
+/* Детали операции и Категория - одинаковая ширина */
+#expenses-table th:nth-child(2),
+#expenses-table td:nth-child(2),
+#expenses-table th:nth-child(3),
+#expenses-table td:nth-child(3) {
+    min-width: 200px;
+    width: 25%;
+}
+
+/* Уменьшение шрифта для даты и часа */
+#expenses-table td:nth-child(1) input {
+    font-size: 12px;
+}
+
+/* Сумма и Валюта - одинаковая ширина */
+#expenses-table th:nth-child(4),
+#expenses-table td:nth-child(4),
+#expenses-table th:nth-child(5),
+#expenses-table td:nth-child(5) {
+    width: 90px;
+    min-width: 90px;
+    max-width: 90px;
+}
+
+/* Одинаковая ширина для столбцов 6-8 (Сумма план, Бюджет реф) */
+#expenses-table th:nth-child(6),
+#expenses-table td:nth-child(6),
+#expenses-table th:nth-child(7),
+#expenses-table td:nth-child(7),
+#expenses-table th:nth-child(8),
+#expenses-table td:nth-child(8) {
+    width: 90px;
+    min-width: 90px;
+    max-width: 90px;
+}
+
+/* Компактные заголовки */
+#expenses-table th:nth-child(6),
+#expenses-table th:nth-child(7),
+#expenses-table th:nth-child(8) {
+    font-size: 11px;
+    line-height: 1.2;
+    padding: 6px 8px;
+}
+
+/* Уменьшение шрифта в селекте валюты */
+#expenses-table .currency-select {
+    font-size: 12px;
+}
+
+/* Стили для модальных окон миграции и импорта */
+.migration-modal,
+.import-modal,
+.conflict-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.migration-modal-content,
+.import-modal-content,
+.conflict-modal-content {
+    background-color: white;
+    padding: 30px;
+    border-radius: 8px;
+    max-width: 600px;
+    max-height: 80vh;
+    overflow-y: auto;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.migration-actions,
+.import-actions,
+.conflict-actions {
+    margin-top: 20px;
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+}
+
+.progress-container {
+    margin: 20px 0;
+}
+
+.progress-bar {
+    width: 100%;
+    height: 30px;
+    background-color: #f0f0f0;
+    border-radius: 15px;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    background-color: #4CAF50;
+    transition: width 0.3s ease;
+}
+
+.progress-text {
+    margin-top: 10px;
+    text-align: center;
+    font-size: 14px;
+    color: #666;
+}
+
+.progress-note {
+    margin-top: 10px;
+    text-align: center;
+    font-size: 12px;
+    color: #999;
+}
+
+.radio-option {
+    display: block;
+    padding: 10px;
+    margin: 10px 0;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.radio-option:hover {
+    background-color: #f5f5f5;
+}
+
+.radio-option input[type="radio"] {
+    width: auto;
+    margin-right: 10px;
+}
+
+.warning {
+    color: #f57f17;
+    font-size: 13px;
+}
+
+@media (max-width: 768px) {
+    .container {
+        padding: 10px;
+    }
+
+    .sections {
+        flex-direction: column;
+    }
+
+    .period-selector {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .period-selector select,
+    .period-selector input {
+        width: 100%;
+    }
+
+    .migration-modal-content,
+    .import-modal-content,
+    .conflict-modal-content {
+        margin: 20px;
+        max-width: calc(100% - 40px);
+    }
+}
