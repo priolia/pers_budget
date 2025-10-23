@@ -13,6 +13,7 @@ import { DateUtils } from './utils/dates.js';
 import { CurrencyUtils } from './utils/currency.js';
 import { ExportUtils } from './utils/export.js';
 import { ImportUtils } from './utils/import.js';
+import { UIManager } from './ui.js';
 
 // Глобальное приложение
 window.BudgetApp = {
@@ -27,6 +28,7 @@ window.BudgetApp = {
     CurrencyUtils,
     ExportUtils,
     ImportUtils,
+    UIManager,
 
     // Состояние
     initialized: false,
@@ -57,6 +59,9 @@ window.BudgetApp = {
             if (typeof initializeApp === 'function') {
                 // Совместимость со старым кодом
                 this.integrateWithLegacyUI();
+            } else {
+                // Инициализация нового UI модуля
+                UIManager.init();
             }
 
             this.initialized = true;
@@ -251,19 +256,8 @@ window.BudgetApp = {
             });
         }
 
-        // Кнопка обновления курсов
-        const updateRatesBtn = document.querySelector('[data-action="update-rates"]');
-        if (updateRatesBtn) {
-            updateRatesBtn.addEventListener('click', async () => {
-                const result = await this.updateRates();
-                if (result.success) {
-                    alert(`✅ Курсы обновлены\nEUR → UAH: ${result.rates.rateEURtoUAH}\nEUR → BGN: ${result.rates.rateEURtoBGN}`);
-                    window.location.reload();
-                } else {
-                    alert('❌ Ошибка обновления курсов');
-                }
-            });
-        }
+        // Кнопки обновления курсов (обрабатываются в UIManager)
+        // См. UIManager.init() и UIManager.updateExchangeRates()
     },
 
     /**
