@@ -10,12 +10,14 @@ export class ExportUtils {
      * Экспортировать все данные в JSON файл
      */
     static exportToJSON() {
+        const config = DataManager.getConfig();
+
         const data = {
             categories: DataManager.getCategories(),
             expenses: DataManager.getExpenses(),
             config: {
-                periodStartDay: DataManager.config.periodStartDay,
-                settings: DataManager.config.settings
+                periodStartDay: config.periodStartDay,
+                settings: config.settings
                 // Пароль не экспортируем из соображений безопасности
             },
             version: {
