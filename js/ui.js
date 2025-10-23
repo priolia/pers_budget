@@ -68,6 +68,35 @@ export class UIManager {
             btn.addEventListener('click', () => this.updateExchangeRates());
         });
 
+        document.querySelectorAll('[data-action="settings"]').forEach(btn => {
+            btn.addEventListener('click', () => this.showTab('settings'));
+        });
+
+        document.querySelectorAll('[data-action="logout"]').forEach(btn => {
+            btn.addEventListener('click', () => this.logout());
+        });
+
+        // Дополнительные кнопки
+        const resetCategoriesBtn = document.getElementById('reset-categories-btn');
+        if (resetCategoriesBtn) {
+            resetCategoriesBtn.addEventListener('click', () => this.resetCategories());
+        }
+
+        const clearExpensesBtn = document.getElementById('clear-expenses-btn');
+        if (clearExpensesBtn) {
+            clearExpensesBtn.addEventListener('click', () => this.clearExpenses());
+        }
+
+        const clearAllBtn = document.getElementById('clear-all-btn');
+        if (clearAllBtn) {
+            clearAllBtn.addEventListener('click', () => this.clearAllData());
+        }
+
+        const changePasswordBtn = document.getElementById('change-password-btn');
+        if (changePasswordBtn) {
+            changePasswordBtn.addEventListener('click', () => this.changePassword());
+        }
+
         // Инициализация данных
         this.initPeriodSelector();
         this.updateExchangeRatesDisplay();
@@ -1043,6 +1072,181 @@ export class UIManager {
         } catch (error) {
             console.error('❌ Ошибка сохранения настроек:', error);
             alert('Ошибка сохранения настроек');
+        }
+    }
+
+    // ============================================
+    // ГРУППА 9: ДОПОЛНИТЕЛЬНЫЕ ФУНКЦИИ
+    // ============================================
+
+    /**
+     * Выход из приложения
+     */
+    static logout() {
+        if (confirm('Вы уверены, что хотите выйти?')) {
+            // Скрыть основное приложение
+            document.getElementById('app').classList.add('hidden');
+
+            // Показать экран входа
+            document.getElementById('login-screen').classList.remove('hidden');
+
+            // Очистить пароль из AuthManager
+            if (window.BudgetApp && window.BudgetApp.AuthManager) {
+                window.BudgetApp.AuthManager.logout();
+            }
+
+            console.log('👋 Выход из приложения');
+        }
+    }
+
+    /**
+     * Сброс категорий к дефолтным значениям
+     */
+    static async resetCategories() {
+        if (!confirm('Вы уверены, что хотите сбросить все категории к дефолтным значениям? Это действие необратимо!')) {
+            return;
+        }
+
+        try {
+            // Получить дефолтные категории из CONFIG
+            const defaultCategories = window.BudgetApp.CONFIG.DEFAULT_CATEGORIES || [];
+
+            if (defaultCategories.length === 0) {
+                alert('Дефолтные категории не найдены');
+                return;
+            }
+
+            // Установить дефолтные категории
+            DataManager.setCategories(defaultCategories);
+
+            await window.BudgetApp.saveData();
+
+            // Обновить UI
+            this.renderCategoriesTable();
+            this.renderReferenceTable();
+            this.renderBudgetSummary();
+            this.updateCategoryFilter();
+
+            alert('Категории сброшены к дефолтным значениям');
+            console.log('✅ Категории сброшены');
+        } catch (error) {
+            console.error('❌ Ошибка сброса категорий:', error);
+            alert('Ошибка сброса категорий');
+        }
+    }
+
+    /**
+     * Очистка всех трат текущего периода
+     */
+    static async clearExpenses() {
+        if (!confirm('Вы уверены, что хотите очистить все траты текущего периода? Это действие необратимо!')) {
+            return;
+        }
+
+        try {
+            const expenses = DataManager.getExpenses();
+            const currentPeriod = window.BudgetApp.currentPeriod;
+
+            // Удалить траты только текущего периода
+            const remainingExpenses = expenses.filter(expense => {
+                const expenseDate = new Date(expense.date);
+                const expensePeriod = DateUtils.getPeriodForDate(expenseDate, DataManager.getConfig().periodStartDay || 25);
+
+                return !(expensePeriod.year === currentPeriod.year && expensePeriod.month === currentPeriod.month);
+            });
+
+            DataManager.setExpenses(remainingExpenses);
+
+            await window.BudgetApp.saveData();
+
+            // Обновить UI
+            this.renderExpensesTable();
+            this.renderReferenceTable();
+            this.renderBudgetSummary();
+
+            alert(`Траты за ${DateUtils.formatPeriod(currentPeriod)} очищены`);
+            console.log('✅ Траты очищены');
+        } catch (error) {
+            console.error('❌ Ошибка очистки трат:', error);
+            alert('Ошибка очистки трат');
+        }
+    }
+
+    /**
+     * Очистка всех данных
+     */
+    static async clearAllData() {
+        const confirmation = prompt('⚠️ ВНИМАНИЕ! Это удалит ВСЕ данные (категории, траты, настройки)!\n\nДля подтверждения введите: УДАЛИТЬ ВСЕ');
+
+        if (confirmation !== 'УДАЛИТЬ ВСЕ') {
+            alert('Очистка отменена');
+            return;
+        }
+
+        try {
+            // Очистить все данные
+            DataManager.setCategories([]);
+            DataManager.setExpenses([]);
+            DataManager.resetConfig();
+
+            await window.BudgetApp.saveData();
+
+            // Обновить UI
+            this.renderCategoriesTable();
+            this.renderExpensesTable();
+            this.renderReferenceTable();
+            this.renderBudgetSummary();
+            this.updateCategoryFilter();
+            this.loadSettings();
+
+            alert('Все данные очищены');
+            console.log('✅ Все данные очищены');
+
+            // Предложить перезагрузить страницу
+            if (confirm('Рекомендуется перезагрузить страницу. Перезагрузить сейчас?')) {
+                window.location.reload();
+            }
+        } catch (error) {
+            console.error('❌ Ошибка очистки данных:', error);
+            alert('Ошибка очистки данных');
+        }
+    }
+
+    /**
+     * Смена пароля
+     */
+    static async changePassword() {
+        const currentPassword = prompt('Введите текущий пароль:');
+        if (!currentPassword) {
+            return;
+        }
+
+        // Проверить текущий пароль
+        const isValid = await window.BudgetApp.AuthManager.checkPassword(currentPassword);
+        if (!isValid) {
+            alert('Неверный текущий пароль');
+            return;
+        }
+
+        const newPassword = prompt('Введите новый пароль (минимум 6 символов):');
+        if (!newPassword || newPassword.length < 6) {
+            alert('Пароль должен содержать минимум 6 символов');
+            return;
+        }
+
+        const confirmPassword = prompt('Подтвердите новый пароль:');
+        if (newPassword !== confirmPassword) {
+            alert('Пароли не совпадают');
+            return;
+        }
+
+        try {
+            await window.BudgetApp.AuthManager.changePassword(newPassword);
+            alert('Пароль успешно изменен');
+            console.log('✅ Пароль изменен');
+        } catch (error) {
+            console.error('❌ Ошибка смены пароля:', error);
+            alert('Ошибка смены пароля: ' + error.message);
         }
     }
 }
