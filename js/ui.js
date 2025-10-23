@@ -409,9 +409,9 @@ export class UIManager {
             const category = categories.find(cat => cat.id === expense.categoryId);
             const categoryName = category ? category.name : 'Не указана';
 
-            // Расчет оставшегося лимита
-            const spent = this.getCategorySpentAmount(expense.categoryId, expense.id);
-            const remaining = category ? Math.max(0, category.limit - spent) : 0;
+            // Расчет оставшегося лимита (ВКЛЮЧАЯ текущую операцию)
+            const spent = this.getCategorySpentAmount(expense.categoryId);
+            const remaining = category ? (category.limit - spent) : 0;
             const budgetPercentage = category ? (category.percentage || 0) : 0;
 
             const row = document.createElement('tr');
@@ -423,6 +423,7 @@ export class UIManager {
                 <td>${categoryName}</td>
                 <td>${expense.amount.toFixed(2)}</td>
                 <td>${expense.currency}</td>
+                <td>${expense.amountEUR.toFixed(2)}</td>
                 <td>${remaining.toFixed(2)}</td>
                 <td>${category ? category.limit.toFixed(2) : '0.00'}</td>
                 <td>${budgetPercentage.toFixed(2)}%</td>
