@@ -19,8 +19,13 @@ from config import Config
 
 app = Flask(__name__)
 
-# Настройка CORS
-CORS(app, origins=Config.ALLOWED_ORIGINS)
+# Настройка CORS - детальная конфигурация для поддержки preflight запросов
+CORS(app,
+     origins=Config.ALLOWED_ORIGINS,
+     methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+     allow_headers=['Content-Type', 'X-API-Key', 'Authorization'],
+     supports_credentials=False,
+     max_age=3600)
 
 # Убедимся что папки существуют
 os.makedirs(Config.BACKUP_DIR, exist_ok=True)
