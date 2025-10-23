@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Персональное бюджетирование v2.0</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%234CAF50' width='100' height='100' rx='15'/><text x='50' y='75' font-size='70' text-anchor='middle' fill='white' font-family='Arial'>€</text></svg>">
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <!-- Экран логина -->
+    <div id="login-screen" class="login-container">
+        <h2>Вход в систему бюджетирования v2.0</h2>
+        <form id="login-form">
+            <div class="form-group">
+                <label for="password-input">Пароль:</label>
+                <input type="password" id="password-input" autocomplete="current-password">
+            </div>
+            <div id="login-error" class="error-message hidden"></div>
+            <button type="submit" id="login-button">Войти</button>
+        </form>
+        <p style="margin-top: 20px; font-size: 12px; color: #999;">
+            Budget App v2.0 | API: <span id="api-status">проверка...</span>
+        </p>
+    </div>
+
+    <!-- Основное приложение -->
+    <div id="app" class="hidden">
+        <div class="container" style="position: relative;">
+            <div class="user-info">
+                <span id="connection-status" title="Статус подключения к серверу">🟢</span> |
+                <button class="button-secondary" data-action="sync" style="padding: 5px 10px; font-size: 12px;">🔄 Синхронизировать</button> |
+                <span class="settings-link" data-action="settings">⚙️ Настройки</span> |
+                <span class="settings-link" data-action="logout">Выход</span>
+            </div>
+
+            <h1>Персональное бюджетирование v2.0</h1>
+
+            <!-- Информация о курсах валют -->
+            <div class="exchange-info">
+                <div class="rates-container" id="exchange-rates">
+                    <div class="rate-item">Загрузка курсов валют...</div>
+                </div>
+                <div style="font-size: 12px; margin-top: 5px;">
+                    Последнее обновление: <span id="last-update">—</span>
+                    <button class="button-secondary" data-action="update-rates" style="padding: 3px 8px; font-size: 12px; margin-left: 10px;">Обновить курсы</button>
+                </div>
+            </div>
+
+            <!-- Выбор периода -->
+            <div class="period-selector">
+                <label>Период:</label>
+                <select id="period-selector">
+                    <!-- Будет заполнено динамически -->
+                </select>
+                <button class="button-secondary" id="current-period-btn">Текущий период</button>
+            </div>
+
+            <!-- Вкладки -->
+            <div class="tabs">
+                <div class="tab active" data-tab="reference">Справочник</div>
+                <div class="tab" data-tab="expenses">Траты</div>
+                <div class="tab" data-tab="categories">Категории</div>
+                <div class="tab" data-tab="budget">Бюджет</div>
+                <div class="tab" data-tab="settings">Настройки</div>
+            </div>
+
+            <!-- Вкладка "Справочник" -->
+            <div id="reference-tab" class="tab-content active">
+                <h2>Справочник категорий</h2>
+                <div class="table-container">
+                    <table id="reference-table">
+                        <thead>
+                            <tr>
+                                <th>Категория</th>
+                                <th>Лимит (€)</th>
+                                <th>% от бюджета</th>
+                                <th>Потрачено (€)</th>
+                                <th>Остаток (€)</th>
+                                <th>% использования</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Данные будут добавлены JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Вкладка "Траты" -->
+            <div id="expenses-tab" class="tab-content">
+                <h2>Учет трат за <span id="expenses-period-title">текущий период</span></h2>
+
+                <div class="form-group">
+                    <button id="add-expense-btn">Добавить расход</button>
+                    <button class="button-secondary" data-action="export">Экспорт</button>
+                    <button class="button-danger" id="clear-expenses-btn">Очистить все</button>
+                </div>
+
+                <div class="form-group" style="display: flex; gap: 10px; align-items: center;">
+                    <label for="category-filter" style="margin: 0;">Фильтр по категории:</label>
+                    <select id="category-filter" style="width: 250px;">
+                        <option value="">Все категории</option>
+                    </select>
+                </div>
+
+                <div class="table-container">
+                    <table id="expenses-table">
+                        <thead>
+                            <tr>
+                                <th>Дата и час</th>
+                                <th>Детали операции</th>
+                                <th>Категория</th>
+                                <th>Сумма</th>
+                                <th>Валюта</th>
+                                <th>Сумма план (€)</th>
+                                <th>Бюджет реф €</th>
+                                <th>Бюджет реф %</th>
+                                <th>Действия</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Данные будут добавлены JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Вкладка "Категории" -->
+            <div id="categories-tab" class="tab-content">
+                <h2>Управление категориями</h2>
+
+                <div class="form-group">
+                    <button id="add-category-btn">Добавить категорию</button>
+                    <button class="button-secondary" id="reset-categories-btn">Сбросить к дефолтным</button>
+                </div>
+
+                <div class="table-container">
+                    <table id="categories-table">
+                        <thead>
+                            <tr>
+                                <th>Название</th>
+                                <th>Лимит (€)</th>
+                                <th>% от бюджета</th>
+                                <th>Порядок</th>
+                                <th>Действия</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Данные будут добавлены JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Вкладка "Бюджет" -->
+            <div id="budget-tab" class="tab-content">
+                <h2>Сводка бюджета</h2>
+
+                <div class="table-container">
+                    <table id="budget-summary-table">
+                        <thead>
+                            <tr>
+                                <th>Категория</th>
+                                <th>План (€)</th>
+                                <th>Факт (€)</th>
+                                <th>% исполнения</th>
+                                <th>Можно тратить/перерасход (€)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Данные будут добавлены JavaScript -->
+                        </tbody>
+                        <tfoot>
+                            <tr class="total-row">
+                                <td>Всего</td>
+                                <td id="total-plan-euro">0.00</td>
+                                <td id="total-fact-euro">0.00</td>
+                                <td id="total-percentage">0%</td>
+                                <td id="total-remaining">0.00</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+
+                <div class="total-section">
+                    <h3>Итоги</h3>
+                    <table>
+                        <tr>
+                            <td>Доход (€):</td>
+                            <td id="summary-income">0.00</td>
+                        </tr>
+                        <tr>
+                            <td>Факт расходов (€):</td>
+                            <td id="summary-fact">0.00</td>
+                        </tr>
+                        <tr>
+                            <td>Отложено евро:</td>
+                            <td id="saved-euro">0.00</td>
+                        </tr>
+                    </table>
+                </div>
+
+                <div class="sections">
+                    <div class="section">
+                        <h3>Распределение расходов</h3>
+                        <div id="chart-container" class="chart-container"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Вкладка "Настройки" -->
+            <div id="settings-tab" class="tab-content">
+                <h2>Настройки</h2>
+
+                <div class="section">
+                    <h3>🔐 Безопасность</h3>
+                    <div class="form-group">
+                        <button id="change-password-btn">Сменить пароль</button>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h3>📅 Период отчетности</h3>
+                    <div class="form-group">
+                        <label for="period-start-day">День начала периода (1-28):</label>
+                        <input type="number" id="period-start-day" min="1" max="28" value="25">
+                        <small>Текущий период: <span id="current-period-display">—</span></small>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h3>💱 Курсы валют</h3>
+                    <div class="form-group">
+                        <label>EUR → UAH: <span id="rate-uah-display">—</span></label>
+                        <label>EUR → BGN: <span id="rate-bgn-display">—</span></label>
+                        <button class="button-secondary" data-action="update-rates">🔄 Обновить курсы с Monobank</button>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h3>💰 Лимиты и налоги</h3>
+                    <div class="form-group">
+                        <label for="income-euro">Доход (EUR):</label>
+                        <input type="number" id="income-euro" step="0.01">
+                    </div>
+                    <div class="form-group">
+                        <label for="limit-fop">Лимит ФОП (EUR):</label>
+                        <input type="number" id="limit-fop" step="0.01">
+                    </div>
+                    <div class="form-group">
+                        <label for="limit-crypto">Лимит крипты (EUR):</label>
+                        <input type="number" id="limit-crypto" step="0.01">
+                    </div>
+                    <div class="form-group">
+                        <label for="tax-rate">Ставка налога (%):</label>
+                        <input type="number" id="tax-rate" step="0.1">
+                    </div>
+                    <button id="save-settings-btn">Сохранить настройки</button>
+                </div>
+
+                <div class="section">
+                    <h3>📦 Данные</h3>
+                    <div class="form-group">
+                        <button data-action="import">📥 Импортировать данные из файла</button>
+                        <button class="button-secondary" data-action="export">📤 Экспортировать все данные</button>
+                        <button class="button-danger" id="clear-all-btn">🗑️ Очистить все данные</button>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h3>🔄 Синхронизация</h3>
+                    <div class="form-group">
+                        <p>Статус: <span id="sync-status">🟢 Подключено</span></p>
+                        <p>Последняя синхронизация: <span id="last-sync-time">—</span></p>
+                        <button data-action="sync">🔄 Синхронизировать сейчас</button>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h3>🔧 Обслуживание</h3>
+                    <div class="form-group">
+                        <p>Статус миграции: <span id="migration-status">Проверка...</span></p>
+                        <button data-action="migrate">🔄 Мигрировать данные на новый формат</button>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h3>ℹ️ О приложении</h3>
+                    <p>Версия: <span id="app-version">2.0.0</span></p>
+                    <p>API версия: <span id="api-version">—</span></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Budget App v2.0 Modules -->
+    <script type="module" src="js/main.js"></script>
+</body>
+</html>
