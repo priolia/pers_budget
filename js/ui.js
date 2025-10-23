@@ -76,6 +76,41 @@ export class UIManager {
             btn.addEventListener('click', () => this.logout());
         });
 
+        document.querySelectorAll('[data-action="sync"]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const result = await window.BudgetApp.sync();
+                if (result.success) {
+                    alert('✅ Синхронизация завершена');
+                } else {
+                    alert('❌ Ошибка синхронизации: ' + result.message);
+                }
+            });
+        });
+
+        document.querySelectorAll('[data-action="export"]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                await window.BudgetApp.exportData();
+            });
+        });
+
+        document.querySelectorAll('[data-action="import"]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const result = await window.BudgetApp.importData();
+                if (result.success) {
+                    alert('✅ Импорт завершен');
+                    window.location.reload();
+                } else if (!result.cancelled) {
+                    alert('❌ Ошибка импорта: ' + result.error);
+                }
+            });
+        });
+
+        document.querySelectorAll('[data-action="migrate"]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                await window.BudgetApp.migrate();
+            });
+        });
+
         // Дополнительные кнопки
         const resetCategoriesBtn = document.getElementById('reset-categories-btn');
         if (resetCategoriesBtn) {
@@ -104,7 +139,6 @@ export class UIManager {
 
         // Рендеринг всех таблиц
         this.renderReferenceTable();
-        this.renderCategoriesTable();
         this.renderExpensesTable();
         this.renderBudgetSummary();
         this.updateCategoryFilter();
@@ -148,6 +182,8 @@ export class UIManager {
             this.renderBudgetSummary();
         } else if (tabName === 'reference') {
             this.renderReferenceTable();
+        } else if (tabName === 'expenses') {
+            this.renderExpensesTable();
         }
     }
 
@@ -259,7 +295,7 @@ export class UIManager {
 
     /**
      * Рендеринг таблицы справочника категорий
-     * Показывает лимиты, проценты, потраченные суммы и остатки
+     * Показывает лимиты, проценты, потраченные суммы и остатки (редактируемая)
      */
     static renderReferenceTable() {
         const tbody = document.querySelector('#reference-table tbody');
@@ -292,6 +328,7 @@ export class UIManager {
             const percentage = category.limit > 0 ? (spent / category.limit * 100) : 0;
 
             const row = document.createElement('tr');
+            row.dataset.categoryId = category.id;
 
             // Цветовая индикация
             let colorClass = '';
@@ -305,38 +342,6 @@ export class UIManager {
                 colorClass = 'budget-over-100';
             }
             row.className = colorClass;
-
-            row.innerHTML = `
-                <td>${category.name}</td>
-                <td>${category.limit.toFixed(2)}</td>
-                <td>${(category.percentage || 0).toFixed(2)}%</td>
-                <td>${spent.toFixed(2)}</td>
-                <td>${remaining.toFixed(2)}</td>
-                <td>${percentage.toFixed(2)}%</td>
-            `;
-
-            tbody.appendChild(row);
-        });
-    }
-
-    /**
-     * Рендеринг таблицы управления категориями
-     * Редактируемая таблица для управления категориями
-     */
-    static renderCategoriesTable() {
-        const tbody = document.querySelector('#categories-table tbody');
-        if (!tbody) return;
-
-        tbody.innerHTML = '';
-
-        const categories = DataManager.getCategories();
-
-        // Сортируем категории по порядку
-        const sortedCategories = [...categories].sort((a, b) => (a.order || 0) - (b.order || 0));
-
-        sortedCategories.forEach(category => {
-            const row = document.createElement('tr');
-            row.dataset.categoryId = category.id;
 
             row.innerHTML = `
                 <td>
@@ -355,6 +360,9 @@ export class UIManager {
                     <input type="number" min="1" class="category-order"
                            value="${category.order || 1}" data-original="${category.order || 1}">
                 </td>
+                <td>${spent.toFixed(2)}</td>
+                <td>${remaining.toFixed(2)}</td>
+                <td>${percentage.toFixed(2)}%</td>
                 <td>
                     <button class="button-secondary" onclick="window.BudgetApp.UIManager.updateCategory('${category.id}')"
                             title="Сохранить изменения">💾</button>
@@ -366,6 +374,7 @@ export class UIManager {
             tbody.appendChild(row);
         });
     }
+
 
     /**
      * Рендеринг таблицы трат
@@ -418,7 +427,8 @@ export class UIManager {
                 <td>${category ? category.limit.toFixed(2) : '0.00'}</td>
                 <td>${budgetPercentage.toFixed(2)}%</td>
                 <td>
-                    <button class="button-danger" onclick="window.BudgetApp.UIManager.deleteExpense('${expense.id}')">🗑️</button>
+                    <button class="button-secondary" onclick="window.BudgetApp.UIManager.editExpense('${expense.id}')" title="Редактировать">✏️</button>
+                    <button class="button-danger" onclick="window.BudgetApp.UIManager.deleteExpense('${expense.id}')" title="Удалить">🗑️</button>
                 </td>
             `;
 
@@ -551,7 +561,6 @@ export class UIManager {
 
             await window.BudgetApp.saveData();
 
-            this.renderCategoriesTable();
             this.renderReferenceTable();
             this.updateCategoryFilter();
 
@@ -591,7 +600,6 @@ export class UIManager {
             DataManager.deleteCategory(categoryId);
             await window.BudgetApp.saveData();
 
-            this.renderCategoriesTable();
             this.renderReferenceTable();
             this.renderExpensesTable();
             this.renderBudgetSummary();
@@ -640,7 +648,6 @@ export class UIManager {
 
             await window.BudgetApp.saveData();
 
-            this.renderCategoriesTable();
             this.renderReferenceTable();
             this.renderExpensesTable();
             this.renderBudgetSummary();
@@ -792,6 +799,138 @@ export class UIManager {
     static cancelExpense(button) {
         const row = button.closest('tr');
         row.remove();
+    }
+
+    /**
+     * Редактирование траты
+     * @param {string} expenseId - ID траты
+     */
+    static editExpense(expenseId) {
+        const expense = DataManager.getExpenseById(expenseId);
+        if (!expense) {
+            alert('Расход не найден');
+            return;
+        }
+
+        const categories = DataManager.getCategories();
+        const tbody = document.querySelector('#expenses-table tbody');
+        if (!tbody) return;
+
+        // Найти строку с этой тратой
+        const rows = tbody.querySelectorAll('tr');
+        let targetRow = null;
+        for (const row of rows) {
+            const editBtn = row.querySelector(`button[onclick*="${expenseId}"]`);
+            if (editBtn) {
+                targetRow = row;
+                break;
+            }
+        }
+
+        if (!targetRow) return;
+
+        // Преобразовать дату в формат datetime-local
+        const date = new Date(expense.date);
+        const dateValue = date.toISOString().slice(0, 16);
+
+        // Заменить содержимое строки на редактируемую форму
+        targetRow.className = 'expense-row expense-row-unsaved';
+        targetRow.innerHTML = `
+            <td><input type="datetime-local" value="${dateValue}" required></td>
+            <td><input type="text" value="${expense.description}" placeholder="Описание" required></td>
+            <td>
+                <select class="category-select" required>
+                    ${categories.map(cat =>
+                        `<option value="${cat.id}" ${cat.id === expense.categoryId ? 'selected' : ''}>${cat.name}</option>`
+                    ).join('')}
+                </select>
+            </td>
+            <td><input type="number" step="0.01" min="0" class="amount" value="${expense.amount}" placeholder="0.00" required></td>
+            <td>
+                <select class="currency-select">
+                    <option value="EUR" ${expense.currency === 'EUR' ? 'selected' : ''}>€</option>
+                    <option value="UAH" ${expense.currency === 'UAH' ? 'selected' : ''}>UAH</option>
+                    <option value="BGN" ${expense.currency === 'BGN' ? 'selected' : ''}>BGN</option>
+                </select>
+            </td>
+            <td>—</td>
+            <td>—</td>
+            <td>—</td>
+            <td>
+                <button class="button-primary" onclick="window.BudgetApp.UIManager.updateExpenseFromRow(this, '${expenseId}')">💾</button>
+                <button class="button-danger" onclick="window.BudgetApp.UIManager.cancelExpenseEdit(this, '${expenseId}')">❌</button>
+            </td>
+        `;
+
+        // Фокус на поле описания
+        targetRow.querySelector('input[type="text"]').focus();
+    }
+
+    /**
+     * Обновление траты из строки таблицы
+     * @param {HTMLElement} button - Кнопка сохранения
+     * @param {string} expenseId - ID траты
+     */
+    static async updateExpenseFromRow(button, expenseId) {
+        const row = button.closest('tr');
+
+        // Получить данные из полей
+        const date = row.querySelector('input[type="datetime-local"]').value;
+        const description = row.querySelector('input[type="text"]').value.trim();
+        const categoryId = row.querySelector('.category-select').value;
+        const amount = parseFloat(row.querySelector('.amount').value);
+        const currency = row.querySelector('.currency-select').value;
+
+        // Валидация
+        if (!date || !description || !categoryId || !amount || amount <= 0) {
+            alert('Заполните все обязательные поля корректно');
+            return;
+        }
+
+        // Конвертация валют
+        const config = DataManager.getConfig();
+        const rates = {
+            rateEURtoUAH: config.settings?.rateEURtoUAH || config.rateEURtoUAH || 48.40,
+            rateEURtoBGN: config.settings?.rateEURtoBGN || config.rateEURtoBGN || 1.9558
+        };
+
+        const converted = CurrencyUtils.convertToAll(amount, currency, rates);
+
+        const expenseData = {
+            categoryId,
+            date: new Date(date).toISOString(),
+            description,
+            amount,
+            currency,
+            amountEUR: converted.EUR,
+            amountUAH: converted.UAH,
+            amountBGN: converted.BGN
+        };
+
+        try {
+            DataManager.updateExpense(expenseId, expenseData);
+            await window.BudgetApp.saveData();
+
+            // Обновить таблицы
+            this.renderExpensesTable();
+            this.renderReferenceTable();
+            this.renderBudgetSummary();
+
+            console.log('✅ Расход обновлен');
+        } catch (error) {
+            console.error('❌ Ошибка обновления расхода:', error);
+            alert('Ошибка обновления расхода');
+        }
+    }
+
+    /**
+     * Отмена редактирования траты
+     * @param {HTMLElement} button - Кнопка отмены
+     * @param {string} expenseId - ID траты
+     */
+    static cancelExpenseEdit(button, expenseId) {
+        // Просто перерисовать таблицу
+        this.renderExpensesTable();
     }
 
     /**
@@ -1061,7 +1200,6 @@ export class UIManager {
 
             // Обновить UI
             this.initPeriodSelector();
-            this.renderCategoriesTable();
             this.renderReferenceTable();
             this.renderExpensesTable();
             this.renderBudgetSummary();
@@ -1122,7 +1260,6 @@ export class UIManager {
             await window.BudgetApp.saveData();
 
             // Обновить UI
-            this.renderCategoriesTable();
             this.renderReferenceTable();
             this.renderBudgetSummary();
             this.updateCategoryFilter();
@@ -1192,7 +1329,6 @@ export class UIManager {
             await window.BudgetApp.saveData();
 
             // Обновить UI
-            this.renderCategoriesTable();
             this.renderExpensesTable();
             this.renderReferenceTable();
             this.renderBudgetSummary();

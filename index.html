@@ -58,16 +58,21 @@
 
             <!-- Вкладки -->
             <div class="tabs">
-                <div class="tab active" data-tab="reference">Справочник</div>
+                <div class="tab active" data-tab="budget">Бюджет</div>
                 <div class="tab" data-tab="expenses">Траты</div>
-                <div class="tab" data-tab="categories">Категории</div>
-                <div class="tab" data-tab="budget">Бюджет</div>
+                <div class="tab" data-tab="reference">Справочник</div>
                 <div class="tab" data-tab="settings">Настройки</div>
             </div>
 
             <!-- Вкладка "Справочник" -->
-            <div id="reference-tab" class="tab-content active">
+            <div id="reference-tab" class="tab-content">
                 <h2>Справочник категорий</h2>
+
+                <div class="form-group">
+                    <button id="add-category-btn">Добавить категорию</button>
+                    <button class="button-secondary" id="reset-categories-btn">Сбросить к дефолтным</button>
+                </div>
+
                 <div class="table-container">
                     <table id="reference-table">
                         <thead>
@@ -75,9 +80,11 @@
                                 <th>Категория</th>
                                 <th>Лимит (€)</th>
                                 <th>% от бюджета</th>
+                                <th>Порядок</th>
                                 <th>Потрачено (€)</th>
                                 <th>Остаток (€)</th>
                                 <th>% использования</th>
+                                <th>Действия</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -126,35 +133,8 @@
                 </div>
             </div>
 
-            <!-- Вкладка "Категории" -->
-            <div id="categories-tab" class="tab-content">
-                <h2>Управление категориями</h2>
-
-                <div class="form-group">
-                    <button id="add-category-btn">Добавить категорию</button>
-                    <button class="button-secondary" id="reset-categories-btn">Сбросить к дефолтным</button>
-                </div>
-
-                <div class="table-container">
-                    <table id="categories-table">
-                        <thead>
-                            <tr>
-                                <th>Название</th>
-                                <th>Лимит (€)</th>
-                                <th>% от бюджета</th>
-                                <th>Порядок</th>
-                                <th>Действия</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <!-- Данные будут добавлены JavaScript -->
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
             <!-- Вкладка "Бюджет" -->
-            <div id="budget-tab" class="tab-content">
+            <div id="budget-tab" class="tab-content active">
                 <h2>Сводка бюджета</h2>
 
                 <div class="table-container">
@@ -226,6 +206,7 @@
                         <label for="period-start-day">День начала периода (1-28):</label>
                         <input type="number" id="period-start-day" min="1" max="28" value="25">
                         <small>Текущий период: <span id="current-period-display">—</span></small>
+                        <small style="display: block; margin-top: 5px; color: #666;">Для применения изменений нажмите кнопку "Сохранить настройки" ниже</small>
                     </div>
                 </div>
 
