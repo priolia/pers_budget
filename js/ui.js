@@ -635,6 +635,19 @@ export class UIManager {
         const planData = sortedCategories.map(cat => cat.limit);
         const factData = sortedCategories.map(cat => categoryTotals[cat.id] || 0);
 
+        // Определить цвета для столбцов факта (красный если перерасход)
+        const factColors = sortedCategories.map((cat, index) => {
+            const fact = categoryTotals[cat.id] || 0;
+            const plan = cat.limit;
+            return fact > plan ? 'rgba(244, 67, 54, 0.6)' : 'rgba(33, 150, 243, 0.6)';
+        });
+
+        const factBorderColors = sortedCategories.map((cat, index) => {
+            const fact = categoryTotals[cat.id] || 0;
+            const plan = cat.limit;
+            return fact > plan ? 'rgba(244, 67, 54, 1)' : 'rgba(33, 150, 243, 1)';
+        });
+
         // Создать график
         this.budgetChart = new Chart(canvas, {
             type: 'bar',
@@ -651,8 +664,8 @@ export class UIManager {
                     {
                         label: 'Факт (€)',
                         data: factData,
-                        backgroundColor: 'rgba(33, 150, 243, 0.6)',
-                        borderColor: 'rgba(33, 150, 243, 1)',
+                        backgroundColor: factColors,
+                        borderColor: factBorderColors,
                         borderWidth: 1
                     }
                 ]
@@ -678,7 +691,21 @@ export class UIManager {
                     tooltip: {
                         callbacks: {
                             label: function(context) {
-                                return context.dataset.label + ': ' + context.parsed.y.toFixed(2) + ' €';
+                                const label = context.dataset.label + ': ' + context.parsed.y.toFixed(2) + ' €';
+
+                                // Если это столбец "Факт", добавляем информацию о перерасходе
+                                if (context.datasetIndex === 1) {
+                                    const categoryIndex = context.dataIndex;
+                                    const plan = planData[categoryIndex];
+                                    const fact = factData[categoryIndex];
+
+                                    if (fact > plan) {
+                                        const overspend = fact - plan;
+                                        return [label, 'Перерасход: ' + overspend.toFixed(2) + ' €'];
+                                    }
+                                }
+
+                                return label;
                             }
                         }
                     }
@@ -696,9 +723,27 @@ export class UIManager {
         if (this.budgetChart) {
             // Обновить существующий график
             const sortedCategories = [...categories].sort((a, b) => (a.order || 0) - (b.order || 0));
+            const planData = sortedCategories.map(cat => cat.limit);
+            const factData = sortedCategories.map(cat => categoryTotals[cat.id] || 0);
+
+            // Определить цвета для столбцов факта (красный если перерасход)
+            const factColors = sortedCategories.map((cat, index) => {
+                const fact = categoryTotals[cat.id] || 0;
+                const plan = cat.limit;
+                return fact > plan ? 'rgba(244, 67, 54, 0.6)' : 'rgba(33, 150, 243, 0.6)';
+            });
+
+            const factBorderColors = sortedCategories.map((cat, index) => {
+                const fact = categoryTotals[cat.id] || 0;
+                const plan = cat.limit;
+                return fact > plan ? 'rgba(244, 67, 54, 1)' : 'rgba(33, 150, 243, 1)';
+            });
+
             this.budgetChart.data.labels = sortedCategories.map(cat => cat.name);
-            this.budgetChart.data.datasets[0].data = sortedCategories.map(cat => cat.limit);
-            this.budgetChart.data.datasets[1].data = sortedCategories.map(cat => categoryTotals[cat.id] || 0);
+            this.budgetChart.data.datasets[0].data = planData;
+            this.budgetChart.data.datasets[1].data = factData;
+            this.budgetChart.data.datasets[1].backgroundColor = factColors;
+            this.budgetChart.data.datasets[1].borderColor = factBorderColors;
             this.budgetChart.update();
         } else {
             // Создать новый график
@@ -800,9 +845,16 @@ export class UIManager {
         // Получить доход из настроек
         const config = DataManager.getConfig();
         const incomeEuro = config.settings?.incomeEuro || config.incomeEuro || 0;
+        const limitFop = config.settings?.limitFop || 0;
+
+        // Получить название категории
+        const categoryName = row.querySelector('.category-name').value.trim();
+
+        // Для категории "Налоги" используем limitFop, для остальных - incomeEuro
+        const baseAmount = (categoryName === 'Налоги') ? limitFop : incomeEuro;
 
         // Пересчитать лимит
-        const newLimit = (incomeEuro * percentage / 100).toFixed(2);
+        const newLimit = (baseAmount * percentage / 100).toFixed(2);
 
         // Обновить поле лимита
         const limitInput = row.querySelector('.category-limit');
@@ -822,9 +874,16 @@ export class UIManager {
         // Получить доход из настроек
         const config = DataManager.getConfig();
         const incomeEuro = config.settings?.incomeEuro || config.incomeEuro || 0;
+        const limitFop = config.settings?.limitFop || 0;
+
+        // Получить название категории
+        const categoryName = row.querySelector('.category-name').value.trim();
+
+        // Для категории "Налоги" используем limitFop, для остальных - incomeEuro
+        const baseAmount = (categoryName === 'Налоги') ? limitFop : incomeEuro;
 
         // Пересчитать процент
-        const newPercentage = incomeEuro > 0 ? ((limit / incomeEuro) * 100).toFixed(2) : 0;
+        const newPercentage = baseAmount > 0 ? ((limit / baseAmount) * 100).toFixed(2) : 0;
 
         // Обновить поле процента
         const percentageInput = row.querySelector('.category-percentage');
@@ -1465,7 +1524,6 @@ export class UIManager {
             const config = DataManager.getConfig();
             const updatedSettings = {
                 ...config.settings,
-                periodStartDay,
                 incomeEuro,
                 limitFop,
                 limitCrypto,
@@ -1473,6 +1531,11 @@ export class UIManager {
             };
 
             DataManager.updateSettings(updatedSettings);
+
+            // Обновить periodStartDay на верхнем уровне config
+            DataManager.updateConfig({
+                periodStartDay
+            });
 
             // Обновить категорию "Налоги" если есть
             // Налог всегда считается только от Лимита ФОП, независимо от дохода
@@ -1654,7 +1717,7 @@ export class UIManager {
         }
 
         // Проверить текущий пароль
-        const isValid = await window.BudgetApp.AuthManager.checkPassword(currentPassword);
+        const isValid = await window.BudgetApp.AuthManager.verifyPassword(currentPassword);
         if (!isValid) {
             alert('Неверный текущий пароль');
             return;
