@@ -93,6 +93,22 @@
                         </tbody>
                     </table>
                 </div>
+
+                <div class="section" style="margin-top: 30px;">
+                    <h3>Расчет налогов</h3>
+                    <div class="table-container">
+                        <table>
+                            <tr>
+                                <td>Налог с ФОП за месяц (грн):</td>
+                                <td id="tax-month-uah">0.00</td>
+                            </tr>
+                            <tr>
+                                <td>Налог с ФОП за квартал (грн):</td>
+                                <td id="tax-quarter-uah">0.00</td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
             </div>
 
             <!-- Вкладка "Траты" -->
@@ -146,7 +162,7 @@
                                 <th>План (€)</th>
                                 <th>Факт (€)</th>
                                 <th>% исполнения</th>
-                                <th>Можно тратить/перерасход (€)</th>
+                                <th>Остаток в Плане (€)</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -172,8 +188,16 @@
                             <td id="summary-income">0.00</td>
                         </tr>
                         <tr>
+                            <td>Запланировано в бюджет:</td>
+                            <td id="budget-planned-percent">0%</td>
+                        </tr>
+                        <tr>
                             <td>Факт расходов (€):</td>
                             <td id="summary-fact">0.00</td>
+                        </tr>
+                        <tr>
+                            <td>Свободные средства (€):</td>
+                            <td id="free-funds">0.00</td>
                         </tr>
                         <tr>
                             <td>Отложено евро:</td>
@@ -223,20 +247,21 @@
                 <div class="section">
                     <h3>💰 Лимиты и налоги</h3>
                     <div class="form-group">
-                        <label for="income-euro">Доход (EUR):</label>
-                        <input type="number" id="income-euro" step="0.01">
-                    </div>
-                    <div class="form-group">
                         <label for="limit-fop">Лимит ФОП (EUR):</label>
-                        <input type="number" id="limit-fop" step="0.01">
+                        <input type="number" id="limit-fop" step="0.01" min="0">
                     </div>
                     <div class="form-group">
                         <label for="limit-crypto">Лимит крипты (EUR):</label>
-                        <input type="number" id="limit-crypto" step="0.01">
+                        <input type="number" id="limit-crypto" step="0.01" min="0">
+                    </div>
+                    <div class="form-group">
+                        <label for="income-euro">Доход (EUR):</label>
+                        <input type="number" id="income-euro" step="0.01" readonly style="background-color: #f0f0f0; cursor: not-allowed;">
+                        <small>Рассчитывается автоматически: ФОП + Крипта</small>
                     </div>
                     <div class="form-group">
                         <label for="tax-rate">Ставка налога (%):</label>
-                        <input type="number" id="tax-rate" step="0.1">
+                        <input type="number" id="tax-rate" step="0.1" min="0" max="100">
                     </div>
                     <button id="save-settings-btn">Сохранить настройки</button>
                 </div>
@@ -275,6 +300,9 @@
             </div>
         </div>
     </div>
+
+    <!-- Chart.js для визуализации данных -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <!-- Budget App v2.0 Modules -->
     <script type="module" src="js/main.js"></script>

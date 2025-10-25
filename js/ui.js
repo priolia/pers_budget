@@ -57,6 +57,18 @@ export class UIManager {
             saveSettingsBtn.addEventListener('click', () => this.saveSettings());
         }
 
+        // Автоматический расчет дохода при изменении ФОП или Крипты
+        const limitFopInput = document.getElementById('limit-fop');
+        const limitCryptoInput = document.getElementById('limit-crypto');
+
+        if (limitFopInput) {
+            limitFopInput.addEventListener('input', () => this.updateIncomeCalculation());
+        }
+
+        if (limitCryptoInput) {
+            limitCryptoInput.addEventListener('input', () => this.updateIncomeCalculation());
+        }
+
         // Фильтр категорий
         const categoryFilter = document.getElementById('category-filter');
         if (categoryFilter) {
@@ -380,6 +392,41 @@ export class UIManager {
 
             tbody.appendChild(row);
         });
+
+        // Обновить расчет налогов
+        this.updateTaxCalculation();
+    }
+
+    /**
+     * Обновление расчета налогов
+     * Рассчитывает налог за месяц и за квартал
+     */
+    static updateTaxCalculation() {
+        const config = DataManager.getConfig();
+        const settings = config.settings || config;
+
+        const limitFop = settings.limitFop || 0;
+        const taxRate = settings.taxRate || 0;
+        const rateEURtoUAH = settings.rateEURtoUAH || 48.40;
+
+        // Налог считается только с лимита ФОП
+        const taxBaseEuro = limitFop;
+        const taxAmountEuro = taxBaseEuro * taxRate / 100;
+        const taxAmountUAH = taxAmountEuro * rateEURtoUAH;
+
+        // Налог за квартал = налог за месяц * 3
+        const taxAmountQuarterUAH = taxAmountUAH * 3;
+
+        // Обновить элементы
+        const taxMonthEl = document.getElementById('tax-month-uah');
+        if (taxMonthEl) {
+            taxMonthEl.textContent = taxAmountUAH.toFixed(2);
+        }
+
+        const taxQuarterEl = document.getElementById('tax-quarter-uah');
+        if (taxQuarterEl) {
+            taxQuarterEl.textContent = taxAmountQuarterUAH.toFixed(2);
+        }
     }
 
 
@@ -546,12 +593,117 @@ export class UIManager {
         // Обновить секцию итогов
         const incomeEuro = config.settings?.incomeEuro || config.incomeEuro || 0;
         document.getElementById('summary-income').textContent = incomeEuro.toFixed(2);
+
+        // Запланировано в бюджет (% от суммы всех процентов категорий)
+        const totalBudgetPercent = categories.reduce((sum, cat) => sum + (cat.percentage || 0), 0);
+        document.getElementById('budget-planned-percent').textContent = totalBudgetPercent.toFixed(2) + '%';
+
         document.getElementById('summary-fact').textContent = totalFact.toFixed(2);
+
+        // Свободные средства = Доход - Факт расходов
+        const freeFunds = incomeEuro - totalFact;
+        document.getElementById('free-funds').textContent = freeFunds.toFixed(2);
 
         // Отложено евро (сумма трат в категории "Инвестиции и сбережения")
         const savingsCategory = categories.find(cat => cat.name === 'Инвестиции и сбережения');
         const savedEuro = savingsCategory ? (categoryTotals[savingsCategory.id] || 0) : 0;
         document.getElementById('saved-euro').textContent = savedEuro.toFixed(2);
+
+        // Обновить график
+        this.updateChart(categories, categoryTotals);
+    }
+
+    /**
+     * Создание графика распределения расходов
+     * @param {Array} categories - Массив категорий
+     * @param {Object} categoryTotals - Объект с суммами трат по категориям
+     */
+    static createChart(categories, categoryTotals) {
+        const container = document.getElementById('chart-container');
+        if (!container) return;
+
+        // Очистить контейнер
+        container.innerHTML = '';
+
+        // Создать canvas
+        const canvas = document.createElement('canvas');
+        container.appendChild(canvas);
+
+        // Подготовить данные
+        const sortedCategories = [...categories].sort((a, b) => (a.order || 0) - (b.order || 0));
+        const labels = sortedCategories.map(cat => cat.name);
+        const planData = sortedCategories.map(cat => cat.limit);
+        const factData = sortedCategories.map(cat => categoryTotals[cat.id] || 0);
+
+        // Создать график
+        this.budgetChart = new Chart(canvas, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'План (€)',
+                        data: planData,
+                        backgroundColor: 'rgba(76, 175, 80, 0.6)',
+                        borderColor: 'rgba(76, 175, 80, 1)',
+                        borderWidth: 1
+                    },
+                    {
+                        label: 'Факт (€)',
+                        data: factData,
+                        backgroundColor: 'rgba(33, 150, 243, 0.6)',
+                        borderColor: 'rgba(33, 150, 243, 1)',
+                        borderWidth: 1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function(value) {
+                                return value + ' €';
+                            }
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top'
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return context.dataset.label + ': ' + context.parsed.y.toFixed(2) + ' €';
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    /**
+     * Обновление графика распределения расходов
+     * @param {Array} categories - Массив категорий
+     * @param {Object} categoryTotals - Объект с суммами трат по категориям
+     */
+    static updateChart(categories, categoryTotals) {
+        if (this.budgetChart) {
+            // Обновить существующий график
+            const sortedCategories = [...categories].sort((a, b) => (a.order || 0) - (b.order || 0));
+            this.budgetChart.data.labels = sortedCategories.map(cat => cat.name);
+            this.budgetChart.data.datasets[0].data = sortedCategories.map(cat => cat.limit);
+            this.budgetChart.data.datasets[1].data = sortedCategories.map(cat => categoryTotals[cat.id] || 0);
+            this.budgetChart.update();
+        } else {
+            // Создать новый график
+            this.createChart(categories, categoryTotals);
+        }
     }
 
     // ============================================
@@ -1240,12 +1392,6 @@ export class UIManager {
             periodStartDay.value = settings.periodStartDay || 25;
         }
 
-        // Доход
-        const incomeEuro = document.getElementById('income-euro');
-        if (incomeEuro) {
-            incomeEuro.value = settings.incomeEuro || 0;
-        }
-
         // Лимиты
         const limitFop = document.getElementById('limit-fop');
         if (limitFop) {
@@ -1256,6 +1402,9 @@ export class UIManager {
         if (limitCrypto) {
             limitCrypto.value = settings.limitCrypto || 0;
         }
+
+        // Пересчитать доход автоматически
+        this.updateIncomeCalculation();
 
         // Ставка налога
         const taxRate = document.getElementById('tax-rate');
@@ -1274,15 +1423,32 @@ export class UIManager {
     }
 
     /**
+     * Автоматический расчет дохода
+     * Рассчитывает доход как сумма Лимит ФОП + Лимит крипты
+     */
+    static updateIncomeCalculation() {
+        const limitFop = parseFloat(document.getElementById('limit-fop').value) || 0;
+        const limitCrypto = parseFloat(document.getElementById('limit-crypto').value) || 0;
+        const incomeEuro = limitFop + limitCrypto;
+
+        const incomeEuroInput = document.getElementById('income-euro');
+        if (incomeEuroInput) {
+            incomeEuroInput.value = incomeEuro.toFixed(2);
+        }
+    }
+
+    /**
      * Сохранение настроек из формы
      * Считывает значения из полей формы и сохраняет в DataManager
      */
     static async saveSettings() {
         const periodStartDay = parseInt(document.getElementById('period-start-day').value) || 25;
-        const incomeEuro = parseFloat(document.getElementById('income-euro').value) || 0;
         const limitFop = parseFloat(document.getElementById('limit-fop').value) || 0;
         const limitCrypto = parseFloat(document.getElementById('limit-crypto').value) || 0;
         const taxRate = parseFloat(document.getElementById('tax-rate').value) || 0;
+
+        // Автоматический расчет дохода
+        const incomeEuro = limitFop + limitCrypto;
 
         // Валидация
         if (periodStartDay < 1 || periodStartDay > 28) {
@@ -1290,7 +1456,7 @@ export class UIManager {
             return;
         }
 
-        if (incomeEuro < 0 || limitFop < 0 || limitCrypto < 0 || taxRate < 0) {
+        if (limitFop < 0 || limitCrypto < 0 || taxRate < 0) {
             alert('Значения не могут быть отрицательными');
             return;
         }
