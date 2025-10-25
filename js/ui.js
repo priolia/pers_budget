@@ -512,6 +512,12 @@ export class UIManager {
         if (titleEl) {
             titleEl.textContent = DateUtils.formatPeriod(window.BudgetApp.currentPeriod);
         }
+
+        // Обновить информацию о сумме по выбранной категории
+        const categoryFilter = document.getElementById('category-filter');
+        if (categoryFilter && categoryFilter.value) {
+            this.updateCategoryTotalInfo(categoryFilter.value);
+        }
     }
 
     /**
@@ -1414,6 +1420,58 @@ export class UIManager {
      */
     static filterExpenses(categoryId) {
         this.renderExpensesTable();
+        this.updateCategoryTotalInfo(categoryId);
+    }
+
+    /**
+     * Обновление информации о сумме трат по выбранной категории
+     * @param {string} categoryId - ID выбранной категории
+     */
+    static updateCategoryTotalInfo(categoryId) {
+        const categoryTotalInfo = document.getElementById('category-total-info');
+        const categoryNameDisplay = document.getElementById('category-name-display');
+        const categoryTotalDisplay = document.getElementById('category-total-display');
+        const categoryTotalDisplayUAH = document.getElementById('category-total-display-uah');
+
+        if (!categoryTotalInfo || !categoryNameDisplay || !categoryTotalDisplay || !categoryTotalDisplayUAH) return;
+
+        // Если категория не выбрана, скрыть информацию
+        if (!categoryId) {
+            categoryTotalInfo.style.display = 'none';
+            return;
+        }
+
+        // Найти выбранную категорию
+        const categories = DataManager.getCategories();
+        const selectedCategory = categories.find(cat => cat.id === categoryId);
+
+        if (!selectedCategory) {
+            categoryTotalInfo.style.display = 'none';
+            return;
+        }
+
+        // Получить траты по выбранной категории за текущий период
+        const expenses = DataManager.getExpenses();
+        const periodExpenses = DateUtils.filterExpensesByPeriod(expenses, window.BudgetApp.currentPeriod);
+        const categoryExpenses = periodExpenses.filter(expense => expense.categoryId === categoryId);
+
+        // Подсчитать сумму в евро
+        const totalEUR = categoryExpenses.reduce((sum, expense) => sum + parseFloat(expense.amountEUR || 0), 0);
+
+        // Получить курс EUR -> UAH
+        const config = DataManager.getConfig();
+        const rateEURtoUAH = config.settings?.rateEURtoUAH || config.rateEURtoUAH || 48.40;
+
+        // Рассчитать сумму в гривнах
+        const totalUAH = totalEUR * rateEURtoUAH;
+
+        // Обновить отображение
+        categoryNameDisplay.textContent = selectedCategory.name;
+        categoryTotalDisplay.textContent = totalEUR.toFixed(2);
+        categoryTotalDisplayUAH.textContent = totalUAH.toFixed(2);
+
+        // Показать информацию
+        categoryTotalInfo.style.display = 'block';
     }
 
     /**
