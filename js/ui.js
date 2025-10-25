@@ -1475,10 +1475,11 @@ export class UIManager {
             DataManager.updateSettings(updatedSettings);
 
             // Обновить категорию "Налоги" если есть
+            // Налог всегда считается только от Лимита ФОП, независимо от дохода
             const categories = DataManager.getCategories();
             const taxCategory = categories.find(cat => cat.name === 'Налоги');
             if (taxCategory) {
-                const taxBase = Math.min(incomeEuro, limitFop);
+                const taxBase = limitFop; // Налог всегда от ФОП
                 const taxLimit = parseFloat((taxBase * taxRate / 100).toFixed(2));
 
                 DataManager.updateCategory(taxCategory.id, {
