@@ -1431,8 +1431,9 @@ export class UIManager {
         const categoryTotalInfo = document.getElementById('category-total-info');
         const categoryNameDisplay = document.getElementById('category-name-display');
         const categoryTotalDisplay = document.getElementById('category-total-display');
+        const categoryTotalDisplayUAH = document.getElementById('category-total-display-uah');
 
-        if (!categoryTotalInfo || !categoryNameDisplay || !categoryTotalDisplay) return;
+        if (!categoryTotalInfo || !categoryNameDisplay || !categoryTotalDisplay || !categoryTotalDisplayUAH) return;
 
         // Если категория не выбрана, скрыть информацию
         if (!categoryId) {
@@ -1454,12 +1455,20 @@ export class UIManager {
         const periodExpenses = DateUtils.filterExpensesByPeriod(expenses, window.BudgetApp.currentPeriod);
         const categoryExpenses = periodExpenses.filter(expense => expense.categoryId === categoryId);
 
-        // Подсчитать сумму
-        const total = categoryExpenses.reduce((sum, expense) => sum + parseFloat(expense.amountEUR || 0), 0);
+        // Подсчитать сумму в евро
+        const totalEUR = categoryExpenses.reduce((sum, expense) => sum + parseFloat(expense.amountEUR || 0), 0);
+
+        // Получить курс EUR -> UAH
+        const config = DataManager.getConfig();
+        const rateEURtoUAH = config.settings?.rateEURtoUAH || config.rateEURtoUAH || 48.40;
+
+        // Рассчитать сумму в гривнах
+        const totalUAH = totalEUR * rateEURtoUAH;
 
         // Обновить отображение
         categoryNameDisplay.textContent = selectedCategory.name;
-        categoryTotalDisplay.textContent = total.toFixed(2);
+        categoryTotalDisplay.textContent = totalEUR.toFixed(2);
+        categoryTotalDisplayUAH.textContent = totalUAH.toFixed(2);
 
         // Показать информацию
         categoryTotalInfo.style.display = 'block';
