@@ -514,7 +514,6 @@ export class UIManager {
         }
 
         // Обновить информацию о сумме по выбранной категории
-        const categoryFilter = document.getElementById('category-filter');
         if (categoryFilter && categoryFilter.value) {
             this.updateCategoryTotalInfo(categoryFilter.value);
         }
