@@ -725,6 +725,18 @@ export class UIManager {
             categoryTotals[expense.categoryId] += parseFloat(expense.amountEUR || 0);
         });
 
+        // ─── Вычислить дни до конца периода (используется и в колонке €/день, и в верхних карточках) ───
+        // Возвращаем 0, если период закончился или ещё не начался; иначе — целое число дней >= 1.
+        const period = window.BudgetApp?.currentPeriod;
+        let daysLeft = 0;
+        if (period && period.periodStart && period.periodEnd) {
+            const now = new Date();
+            const MS_PER_DAY = 24 * 60 * 60 * 1000;
+            if (now >= period.periodStart && now <= period.periodEnd) {
+                daysLeft = Math.max(1, Math.ceil((period.periodEnd.getTime() - now.getTime()) / MS_PER_DAY));
+            }
+        }
+
         let totalPlan = 0;
         let totalFact = 0;
         let totalRemaining = 0;     // план − факт по каждой категории, суммарно (может быть отрицательным)
@@ -755,12 +767,22 @@ export class UIManager {
             }
             row.className = colorClass;
 
+            // ─── €/день для этой категории ───
+            // Прочерк если: остаток ≤ 0 (выбрала или перерасход), план = 0, период закончился
+            let perDayCell;
+            if (daysLeft <= 0 || plan <= 0 || remaining <= 0) {
+                perDayCell = '—';
+            } else {
+                perDayCell = (remaining / daysLeft).toFixed(2);
+            }
+
             row.innerHTML = `
                 <td>${UIManager.formatCategoryName(category)}</td>
                 <td>${plan.toFixed(2)}</td>
                 <td>${fact.toFixed(2)}</td>
                 <td>${percentage.toFixed(2)}%</td>
                 <td>${remaining.toFixed(2)}</td>
+                <td>${perDayCell}</td>
             `;
 
             tbody.appendChild(row);
@@ -775,7 +797,7 @@ export class UIManager {
         // Пустое состояние, если категорий нет
         if (sortedCategories.length === 0) {
             const tr = document.createElement('tr');
-            tr.innerHTML = `<td colspan="5" class="empty-state">
+            tr.innerHTML = `<td colspan="6" class="empty-state">
                 <span class="empty-state-icon">📊</span>
                 Категорий пока нет — заведите их в Справочнике.
             </td>`;
@@ -788,6 +810,17 @@ export class UIManager {
         const totalPercentage = totalPlan > 0 ? (totalFact / totalPlan * 100) : 0;
         document.getElementById('total-percentage').textContent = totalPercentage.toFixed(2) + '%';
         document.getElementById('total-remaining').textContent = totalRemaining.toFixed(2);
+
+        // ─── «Всего» в колонке €/день = то же значение, что в карточке «План в день» наверху ───
+        // По договорённости: Σ max(0, план − факт) / дней. То есть totalPlannedRest / daysLeft.
+        const totalPerDayEl = document.getElementById('total-per-day');
+        if (totalPerDayEl) {
+            if (daysLeft > 0 && totalPlannedRest > 0) {
+                totalPerDayEl.textContent = (totalPlannedRest / daysLeft).toFixed(2);
+            } else {
+                totalPerDayEl.textContent = '—';
+            }
+        }
 
         // ─── Карточки итогов: ВЕРХ (главные) и НИЗ ───
         const incomeEuro = config.settings?.incomeEuro || config.incomeEuro || 0;
