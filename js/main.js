@@ -53,21 +53,28 @@ window.BudgetApp = {
 
             // 4. Установка текущего периода
             const config = DataManager.getConfig();
-            this.currentPeriod = DateUtils.getCurrentPeriod(config.periodStartDay);
+            const periodStartDay = config.settings?.periodStartDay || config.periodStartDay || 25;
+            this.currentPeriod = DateUtils.getCurrentPeriod(periodStartDay);
 
-            // 5. Инициализация UI (если используется старый index.html)
-            if (typeof initializeApp === 'function') {
-                // Совместимость со старым кодом
-                this.integrateWithLegacyUI();
-            } else {
-                // Инициализация нового UI модуля
-                UIManager.init();
-            }
+            // 5. Инициализация UI
+            UIManager.init();
 
             this.initialized = true;
 
             console.log('✅ Приложение инициализировано');
             console.log(`📅 Текущий период: ${DateUtils.formatPeriod(this.currentPeriod)}`);
+
+            // 6. Автозагрузка курсов валют в фоне (не блокирует UI).
+            //    Если сеть/Monobank недоступны — используются последние сохранённые курсы.
+            this.updateRates().then(result => {
+                if (result.success) {
+                    UIManager.updateExchangeRatesDisplay();
+                    UIManager.renderReferenceTable();
+                    UIManager.renderBudgetSummary();
+                } else {
+                    console.warn('⚠️ Автозагрузка курсов не удалась, используются сохранённые');
+                }
+            });
 
             return { success: true };
 
@@ -170,15 +177,14 @@ window.BudgetApp = {
 
             DataManager.updateSettings({
                 rateEURtoUAH: rates.rateEURtoUAH,
-                rateEURtoBGN: rates.rateEURtoBGN,
-                lastRatesUpdate: rates.lastUpdate
+                lastRatesUpdate: rates.lastUpdate,
+                lastRatesDate: rates.lastRatesDate
             });
 
             await this.saveData();
 
             console.log('✅ Курсы обновлены');
             console.log(`EUR → UAH: ${rates.rateEURtoUAH}`);
-            console.log(`EUR → BGN: ${rates.rateEURtoBGN}`);
 
             return { success: true, rates: rates };
 
@@ -186,27 +192,6 @@ window.BudgetApp = {
             console.error('❌ Ошибка обновления курсов:', error);
             return { success: false, error: error };
         }
-    },
-
-    /**
-     * Интеграция со старым UI (для совместимости)
-     */
-    integrateWithLegacyUI() {
-        console.log('🔗 Интеграция с существующим UI...');
-
-        // Подменяем глобальные функции для работы через DataManager
-
-        // Сохранение данных
-        if (typeof window.saveDataToServer === 'function') {
-            const originalSave = window.saveDataToServer;
-            window.saveDataToServer = async () => {
-                await this.saveData();
-                return originalSave();
-            };
-        }
-
-        // Добавляем обработчики на кнопки
-        this.attachEventHandlers();
     },
 
     /**
