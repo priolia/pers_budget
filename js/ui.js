@@ -216,34 +216,56 @@ export class UIManager {
         const config = DataManager.getConfig();
         const periodStartDay = config.settings?.periodStartDay || config.periodStartDay || 25;
 
-        // Генерируем периоды (последние 24 месяца + 2 вперед)
-        const periods = [];
-        const now = new Date();
-
-        for (let i = -24; i <= 2; i++) {
-            const date = new Date(now.getFullYear(), now.getMonth() + i, periodStartDay);
-            const period = DateUtils.getPeriodForDate(date, periodStartDay);
-            periods.push(period);
+        // ─── Активные периоды: 1 прошлый + текущий + 12 будущих ───
+        // Считаем от ТЕКУЩЕГО периода, а не от календарного месяца.
+        const currentPeriod = DateUtils.getCurrentPeriod(periodStartDay);
+        const currentStartMs = currentPeriod.periodStart.getTime();
+        const activePeriods = [];
+        // Берём «опорную дату» внутри каждого периода как periodStart + N месяцев
+        for (let offset = -1; offset <= 12; offset++) {
+            const probe = new Date(currentPeriod.periodStart);
+            probe.setMonth(probe.getMonth() + offset);
+            const period = DateUtils.getPeriodForDate(probe, periodStartDay);
+            activePeriods.push(period);
         }
 
-        // Заполнить selector
-        periods.forEach(period => {
+        // ─── Архивные периоды: всё, что старше "1 прошлый" и где есть траты ───
+        const expenses = DataManager.getExpenses();
+        const allUsedPeriods = DateUtils.getAvailablePeriods(expenses, periodStartDay);
+        const minActiveStartMs = activePeriods[0].periodStart.getTime();
+        const archivePeriods = allUsedPeriods
+            .filter(p => p.periodStart.getTime() < minActiveStartMs)
+            .sort((a, b) => b.periodStart.getTime() - a.periodStart.getTime()); // новые архивные первыми
+
+        // ─── Заполняем selector ───
+        const addOption = (parent, period) => {
             const option = document.createElement('option');
             const startMonth = period.periodStart.getMonth();
             const startYear = period.periodStart.getFullYear();
             option.value = `${startYear}-${String(startMonth).padStart(2, '0')}`;
-            option.textContent = DateUtils.formatPeriod(period);
+            option.textContent = DateUtils.formatPeriodFull(period);
 
-            // Выделить текущий период
-            if (window.BudgetApp && window.BudgetApp.currentPeriod) {
-                const currentStart = window.BudgetApp.currentPeriod.periodStart;
-                if (period.periodStart.getTime() === currentStart.getTime()) {
-                    option.selected = true;
-                }
+            // Выделить текущий выбранный период
+            const selectedStart = (window.BudgetApp && window.BudgetApp.currentPeriod)
+                ? window.BudgetApp.currentPeriod.periodStart.getTime()
+                : currentStartMs;
+            if (period.periodStart.getTime() === selectedStart) {
+                option.selected = true;
             }
 
-            selector.appendChild(option);
-        });
+            parent.appendChild(option);
+        };
+
+        // Активные периоды — без группировки
+        activePeriods.forEach(p => addOption(selector, p));
+
+        // Архивные — в optgroup, чтобы визуально отделить
+        if (archivePeriods.length > 0) {
+            const optgroup = document.createElement('optgroup');
+            optgroup.label = '📦 Архив (есть траты)';
+            archivePeriods.forEach(p => addOption(optgroup, p));
+            selector.appendChild(optgroup);
+        }
     }
 
     /**
@@ -334,12 +356,22 @@ export class UIManager {
         // Сортируем категории по порядку
         const sortedCategories = [...categories].sort((a, b) => (a.order || 0) - (b.order || 0));
 
-        sortedCategories.forEach(category => {
+        if (sortedCategories.length === 0) {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td colspan="9" class="empty-state">
+                <span class="empty-state-icon">📂</span>
+                Категорий пока нет — нажмите «Добавить категорию», чтобы начать.
+            </td>`;
+            tbody.appendChild(tr);
+            this.updateTaxCalculation();
+            return;
+        }
+
+        sortedCategories.forEach((category, index) => {
             const spent = categoryTotals[category.id] || 0;
             const remaining = Math.max(0, category.limit - spent);
             const percentage = category.limit > 0 ? (spent / category.limit * 100) : 0;
 
-            // Получить курс UAH
             const rateEURtoUAH = config.settings?.rateEURtoUAH || config.rateEURtoUAH || 48.40;
             const amountUAH = category.limit * rateEURtoUAH;
 
@@ -359,10 +391,20 @@ export class UIManager {
             }
             row.className = colorClass;
 
+            const isFirst = index === 0;
+            const isLast = index === sortedCategories.length - 1;
+
             row.innerHTML = `
                 <td>
-                    <input type="number" min="1" class="category-order" style="width: 60px;"
-                           value="${category.order || 1}" data-original="${category.order || 1}">
+                    <div class="order-controls">
+                        <button class="order-btn" title="Вверх"
+                                onclick="window.BudgetApp.UIManager.moveCategoryUp('${category.id}')"
+                                ${isFirst ? 'disabled' : ''}>▲</button>
+                        <span class="order-number">${index + 1}</span>
+                        <button class="order-btn" title="Вниз"
+                                onclick="window.BudgetApp.UIManager.moveCategoryDown('${category.id}')"
+                                ${isLast ? 'disabled' : ''}>▼</button>
+                    </div>
                 </td>
                 <td>
                     <input type="text" class="category-name" value="${category.name}"
@@ -395,6 +437,71 @@ export class UIManager {
 
         // Обновить расчет налогов
         this.updateTaxCalculation();
+    }
+
+    /**
+     * Перенумеровать все категории по их текущему порядку (1, 2, 3, … без дырок)
+     * Возвращает массив, отсортированный по новому order
+     */
+    static _renumberCategories() {
+        const categories = [...DataManager.getCategories()]
+            .sort((a, b) => (a.order || 0) - (b.order || 0));
+        categories.forEach((cat, idx) => {
+            const newOrder = idx + 1;
+            if (cat.order !== newOrder) {
+                DataManager.updateCategory(cat.id, { order: newOrder });
+            }
+        });
+        return categories;
+    }
+
+    /**
+     * Переместить категорию на одну позицию вверх (с автосохранением)
+     */
+    static async moveCategoryUp(categoryId) {
+        // Сначала перенумеровать, чтобы не было дырок и дублей
+        const sorted = this._renumberCategories();
+        const idx = sorted.findIndex(c => c.id === categoryId);
+        if (idx <= 0) return; // уже первая
+
+        const cur = sorted[idx];
+        const prev = sorted[idx - 1];
+        DataManager.updateCategory(cur.id, { order: prev.order });
+        DataManager.updateCategory(prev.id, { order: cur.order });
+
+        try {
+            await window.BudgetApp.saveData();
+        } catch (e) {
+            console.error('Ошибка автосохранения порядка категорий:', e);
+        }
+
+        this.renderReferenceTable();
+        this.renderBudgetSummary();
+        this.updateCategoryFilter();
+    }
+
+    /**
+     * Переместить категорию на одну позицию вниз (с автосохранением)
+     */
+    static async moveCategoryDown(categoryId) {
+        const sorted = this._renumberCategories();
+        const idx = sorted.findIndex(c => c.id === categoryId);
+        if (idx === -1 || idx >= sorted.length - 1) return; // уже последняя
+
+        const cur = sorted[idx];
+        const next = sorted[idx + 1];
+        DataManager.updateCategory(cur.id, { order: next.order });
+        DataManager.updateCategory(next.id, { order: cur.order });
+
+        try {
+            await window.BudgetApp.saveData();
+        } catch (e) {
+            console.error('Ошибка автосохранения порядка категорий:', e);
+        }
+
+        this.renderReferenceTable();
+        this.renderBudgetSummary();
+        this.updateCategoryFilter();
     }
 
     /**
@@ -492,7 +599,6 @@ export class UIManager {
                     <select class="currency-select">
                         <option value="EUR" ${expense.currency === 'EUR' ? 'selected' : ''}>€</option>
                         <option value="UAH" ${expense.currency === 'UAH' ? 'selected' : ''}>UAH</option>
-                        <option value="BGN" ${expense.currency === 'BGN' ? 'selected' : ''}>BGN</option>
                     </select>
                 </td>
                 <td class="readonly-field">${remaining.toFixed(2)}</td>
@@ -547,7 +653,9 @@ export class UIManager {
 
         let totalPlan = 0;
         let totalFact = 0;
-        let totalRemaining = 0;
+        let totalRemaining = 0;     // план − факт по каждой категории, суммарно (может быть отрицательным)
+        let totalPlannedRest = 0;   // Σ max(0, план − факт)   — сколько ещё нужно потратить по плану
+        let totalOverspend = 0;     // Σ max(0, факт − план)   — перерасход
 
         // Сортируем категории по порядку
         const sortedCategories = [...categories].sort((a, b) => (a.order || 0) - (b.order || 0));
@@ -586,36 +694,120 @@ export class UIManager {
             totalPlan += plan;
             totalFact += fact;
             totalRemaining += remaining;
+            totalPlannedRest += Math.max(0, plan - fact);
+            totalOverspend += Math.max(0, fact - plan);
         });
 
-        // Обновить итоговую строку
+        // Пустое состояние, если категорий нет
+        if (sortedCategories.length === 0) {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td colspan="5" class="empty-state">
+                <span class="empty-state-icon">📊</span>
+                Категорий пока нет — заведите их в Справочнике.
+            </td>`;
+            tbody.appendChild(tr);
+        }
+
+        // Обновить итоговую строку таблицы
         document.getElementById('total-plan-euro').textContent = totalPlan.toFixed(2);
         document.getElementById('total-fact-euro').textContent = totalFact.toFixed(2);
         const totalPercentage = totalPlan > 0 ? (totalFact / totalPlan * 100) : 0;
         document.getElementById('total-percentage').textContent = totalPercentage.toFixed(2) + '%';
         document.getElementById('total-remaining').textContent = totalRemaining.toFixed(2);
 
-        // Обновить секцию итогов
+        // ─── Карточки итогов ───
         const incomeEuro = config.settings?.incomeEuro || config.incomeEuro || 0;
-        document.getElementById('summary-income').textContent = incomeEuro.toFixed(2);
+        const setText = (id, text) => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = text;
+        };
 
-        // Запланировано в бюджет (% от суммы всех процентов категорий)
-        const totalBudgetPercent = categories.reduce((sum, cat) => sum + (cat.percentage || 0), 0);
-        document.getElementById('budget-planned-percent').textContent = totalBudgetPercent.toFixed(2) + '%';
+        setText('summary-income', `${incomeEuro.toFixed(2)} €`);
+        setText('summary-fact', `${totalFact.toFixed(2)} €`);
+        setText('summary-planned-rest', `${totalPlannedRest.toFixed(2)} €`);
 
-        document.getElementById('summary-fact').textContent = totalFact.toFixed(2);
+        // ─── Свободно = Доход − Факт − (запланировано ещё потратить) ───
+        // Это деньги, которые можно тратить НА ЧТО УГОДНО, не сломав план.
+        const freeFunds = incomeEuro - totalFact - totalPlannedRest;
+        setText('free-funds', `${freeFunds.toFixed(2)} €`);
 
-        // Свободные средства = Доход - Факт расходов
-        const freeFunds = incomeEuro - totalFact;
-        document.getElementById('free-funds').textContent = freeFunds.toFixed(2);
+        // Если "Свободно" отрицательное — карточка становится красной
+        const freeFundsCard = document.getElementById('free-funds-card');
+        if (freeFundsCard) {
+            freeFundsCard.classList.toggle('is-negative', freeFunds < 0);
+        }
 
-        // Отложено евро (сумма трат в категории "Инвестиции и сбережения")
+        // ─── Перерасход (показываем только если есть) ───
+        const overspendCard = document.getElementById('overspend-card');
+        if (overspendCard) {
+            if (totalOverspend > 0.005) {
+                overspendCard.style.display = '';
+                setText('summary-overspend', `−${totalOverspend.toFixed(2)} €`);
+            } else {
+                overspendCard.style.display = 'none';
+            }
+        }
+
+        // ─── Отложено (категория "Инвестиции и сбережения") ───
         const savingsCategory = categories.find(cat => cat.name === 'Инвестиции и сбережения');
         const savedEuro = savingsCategory ? (categoryTotals[savingsCategory.id] || 0) : 0;
-        document.getElementById('saved-euro').textContent = savedEuro.toFixed(2);
+        setText('saved-euro', `${savedEuro.toFixed(2)} €`);
+
+        // ─── Виджет "До конца периода N дней" ───
+        this._updateDaysWidget(incomeEuro, totalFact, totalPlannedRest);
 
         // Обновить график
         this.updateChart(categories, categoryTotals);
+    }
+
+    /**
+     * Виджет «N дней до конца периода, средний дневной остаток».
+     * Считается как: (доход − факт − запланированный остаток по плану) / число оставшихся дней
+     */
+    static _updateDaysWidget(income, totalFact, totalPlannedRest) {
+        const widget = document.getElementById('days-widget');
+        const text = document.getElementById('days-widget-text');
+        if (!widget || !text) return;
+
+        const period = window.BudgetApp?.currentPeriod;
+        if (!period || !period.periodEnd) {
+            widget.style.display = 'none';
+            return;
+        }
+
+        const now = new Date();
+        const end = period.periodEnd;
+        const start = period.periodStart;
+
+        // Если период целиком в прошлом или будущем — показываем спокойную инфо-строку
+        if (now < start) {
+            widget.style.display = '';
+            text.innerHTML = `Период ещё не начался: <strong>${DateUtils.formatPeriodFull(period)}</strong>`;
+            return;
+        }
+        if (now > end) {
+            widget.style.display = '';
+            text.innerHTML = `Период завершён: <strong>${DateUtils.formatPeriodFull(period)}</strong>`;
+            return;
+        }
+
+        // Полные сутки до конца периода
+        const MS_PER_DAY = 24 * 60 * 60 * 1000;
+        const daysLeft = Math.max(1, Math.ceil((end.getTime() - now.getTime()) / MS_PER_DAY));
+
+        const freeFunds = income - totalFact - totalPlannedRest;
+        const perDay = freeFunds / daysLeft;
+
+        widget.style.display = '';
+
+        if (freeFunds < 0) {
+            text.innerHTML = `⚠️ До конца периода <strong>${daysLeft}</strong> дн. ` +
+                `«Свободно» уже отрицательно (${freeFunds.toFixed(2)} €) — план придётся пересмотреть.`;
+        } else {
+            text.innerHTML = `До конца периода <strong>${daysLeft}</strong> дн. ` +
+                `Свободно на день ≈ <strong>${perDay.toFixed(2)} €</strong> ` +
+                `(всего свободно ${freeFunds.toFixed(2)} €).`;
+        }
     }
 
     /**
@@ -779,12 +971,17 @@ export class UIManager {
         }
 
         try {
+            // Новая категория уходит в конец списка
+            const maxOrder = categories.reduce((m, c) => Math.max(m, c.order || 0), 0);
             const newCategory = DataManager.addCategory({
                 name: categoryName.trim(),
                 limit: 0,
                 percentage: 0,
-                order: categories.length + 1
+                order: maxOrder + 1
             });
+
+            // Перенумеруем на всякий случай — вдруг были дырки в старых данных
+            this._renumberCategories();
 
             await window.BudgetApp.saveData();
 
@@ -825,6 +1022,16 @@ export class UIManager {
 
         try {
             DataManager.deleteCategory(categoryId);
+
+            // Если удалили категорию-по-умолчанию — сбрасываем настройку
+            const config = DataManager.getConfig();
+            if (config.settings?.defaultCategoryId === categoryId) {
+                DataManager.updateSettings({ defaultCategoryId: null });
+            }
+
+            // После удаления — перенумеровать оставшиеся, чтобы не было дырок
+            this._renumberCategories();
+
             await window.BudgetApp.saveData();
 
             this.renderReferenceTable();
@@ -908,7 +1115,7 @@ export class UIManager {
         const name = row.querySelector('.category-name').value.trim();
         const limit = parseFloat(row.querySelector('.category-limit').value) || 0;
         const percentage = parseFloat(row.querySelector('.category-percentage').value) || 0;
-        const order = parseInt(row.querySelector('.category-order').value) || 1;
+        // order больше не редактируется через эту кнопку — он управляется стрелками ↑↓
 
         if (!name) {
             alert('Название категории не может быть пустым');
@@ -927,8 +1134,7 @@ export class UIManager {
             DataManager.updateCategory(categoryId, {
                 name,
                 limit,
-                percentage,
-                order
+                percentage
             });
 
             await window.BudgetApp.saveData();
@@ -957,11 +1163,21 @@ export class UIManager {
         const tbody = document.querySelector('#expenses-table tbody');
         if (!tbody) return;
 
-        const categories = DataManager.getCategories();
+        // Берём отсортированный по `order` список — как в Бюджете и фильтре трат
+        const categories = [...DataManager.getCategories()]
+            .sort((a, b) => (a.order || 0) - (b.order || 0));
+
         if (categories.length === 0) {
             alert('Сначала создайте категории');
             return;
         }
+
+        // Категория по умолчанию из настроек, иначе — первая в справочнике
+        const config = DataManager.getConfig();
+        const defaultCategoryId = config.settings?.defaultCategoryId || null;
+        const selectedCategoryId = (defaultCategoryId && categories.some(c => c.id === defaultCategoryId))
+            ? defaultCategoryId
+            : categories[0].id;
 
         const row = document.createElement('tr');
         row.className = 'expense-row expense-row-unsaved';
@@ -976,7 +1192,7 @@ export class UIManager {
             <td>
                 <select class="category-select" required>
                     ${categories.map(cat =>
-                        `<option value="${cat.id}">${cat.name}</option>`
+                        `<option value="${cat.id}"${cat.id === selectedCategoryId ? ' selected' : ''}>${cat.name}</option>`
                     ).join('')}
                 </select>
             </td>
@@ -985,7 +1201,6 @@ export class UIManager {
                 <select class="currency-select">
                     <option value="EUR">€</option>
                     <option value="UAH">UAH</option>
-                    <option value="BGN">BGN</option>
                 </select>
             </td>
             <td>—</td>
@@ -1026,8 +1241,7 @@ export class UIManager {
         // Конвертация валют
         const config = DataManager.getConfig();
         const rates = {
-            rateEURtoUAH: config.settings?.rateEURtoUAH || config.rateEURtoUAH || 48.40,
-            rateEURtoBGN: config.settings?.rateEURtoBGN || config.rateEURtoBGN || 1.9558
+            rateEURtoUAH: config.settings?.rateEURtoUAH || config.rateEURtoUAH || 48.40
         };
 
         const converted = CurrencyUtils.convertToAll(amount, currency, rates);
@@ -1039,8 +1253,7 @@ export class UIManager {
             amount,
             currency,
             amountEUR: converted.EUR,
-            amountUAH: converted.UAH,
-            amountBGN: converted.BGN
+            amountUAH: converted.UAH
         };
 
         try {
@@ -1113,8 +1326,7 @@ export class UIManager {
         // Конвертация валют
         const config = DataManager.getConfig();
         const rates = {
-            rateEURtoUAH: config.settings?.rateEURtoUAH || config.rateEURtoUAH || 48.40,
-            rateEURtoBGN: config.settings?.rateEURtoBGN || config.rateEURtoBGN || 1.9558
+            rateEURtoUAH: config.settings?.rateEURtoUAH || config.rateEURtoUAH || 48.40
         };
 
         const converted = CurrencyUtils.convertToAll(amount, currency, rates);
@@ -1126,8 +1338,7 @@ export class UIManager {
             amount,
             currency,
             amountEUR: converted.EUR,
-            amountUAH: converted.UAH,
-            amountBGN: converted.BGN
+            amountUAH: converted.UAH
         };
 
         try {
@@ -1195,7 +1406,6 @@ export class UIManager {
                 <select class="currency-select">
                     <option value="EUR" ${expense.currency === 'EUR' ? 'selected' : ''}>€</option>
                     <option value="UAH" ${expense.currency === 'UAH' ? 'selected' : ''}>UAH</option>
-                    <option value="BGN" ${expense.currency === 'BGN' ? 'selected' : ''}>BGN</option>
                 </select>
             </td>
             <td>—</td>
@@ -1235,8 +1445,7 @@ export class UIManager {
         // Конвертация валют
         const config = DataManager.getConfig();
         const rates = {
-            rateEURtoUAH: config.settings?.rateEURtoUAH || config.rateEURtoUAH || 48.40,
-            rateEURtoBGN: config.settings?.rateEURtoBGN || config.rateEURtoBGN || 1.9558
+            rateEURtoUAH: config.settings?.rateEURtoUAH || config.rateEURtoUAH || 48.40
         };
 
         const converted = CurrencyUtils.convertToAll(amount, currency, rates);
@@ -1248,8 +1457,7 @@ export class UIManager {
             amount,
             currency,
             amountEUR: converted.EUR,
-            amountUAH: converted.UAH,
-            amountBGN: converted.BGN
+            amountUAH: converted.UAH
         };
 
         try {
@@ -1321,37 +1529,43 @@ export class UIManager {
         const settings = config.settings || config;
 
         const rateEURtoUAH = settings.rateEURtoUAH || 48.40;
-        const rateEURtoBGN = settings.rateEURtoBGN || 1.9558;
-        const lastUpdate = settings.lastRatesUpdate || 'Никогда';
+        const lastUpdate = settings.lastRatesUpdate || null;
+        const lastRatesDate = settings.lastRatesDate || null;
 
         // Обновить в шапке
         const exchangeRates = document.getElementById('exchange-rates');
         if (exchangeRates) {
             exchangeRates.innerHTML = `
-                <div class="rate-item">1 EUR = ${rateEURtoUAH.toFixed(4)} UAH</div>
-                <div class="rate-item">1 EUR = ${rateEURtoBGN.toFixed(4)} BGN</div>
+                <div class="rate-item">1 € = ${rateEURtoUAH.toFixed(4)} UAH</div>
             `;
         }
 
-        // Обновить время последнего обновления
-        const lastUpdateEl = document.getElementById('last-update');
-        if (lastUpdateEl) {
-            if (lastUpdate === 'Никогда') {
-                lastUpdateEl.textContent = lastUpdate;
-            } else {
-                lastUpdateEl.textContent = DateUtils.formatDateTime(lastUpdate);
-            }
+        // Дата курса от ЕЦБ (через Monobank)
+        const ratesDateEl = document.getElementById('rates-date');
+        if (ratesDateEl) {
+            ratesDateEl.textContent = lastRatesDate
+                ? DateUtils.formatDate(lastRatesDate)
+                : '—';
         }
 
-        // Обновить в настройках
+        // Время последнего обновления (когда мы запросили курсы)
+        const lastUpdateEl = document.getElementById('last-update');
+        if (lastUpdateEl) {
+            lastUpdateEl.textContent = lastUpdate
+                ? DateUtils.formatDateTime(lastUpdate)
+                : 'никогда';
+        }
+
+        // Дублируем в Настройках
         const rateUAHDisplay = document.getElementById('rate-uah-display');
         if (rateUAHDisplay) {
             rateUAHDisplay.textContent = rateEURtoUAH.toFixed(4);
         }
-
-        const rateBGNDisplay = document.getElementById('rate-bgn-display');
-        if (rateBGNDisplay) {
-            rateBGNDisplay.textContent = rateEURtoBGN.toFixed(4);
+        const rateUAHDateEl = document.getElementById('rate-uah-date');
+        if (rateUAHDateEl) {
+            rateUAHDateEl.textContent = lastRatesDate
+                ? DateUtils.formatDate(lastRatesDate)
+                : '—';
         }
     }
 
@@ -1370,21 +1584,24 @@ export class UIManager {
             const updatedSettings = {
                 ...config.settings,
                 rateEURtoUAH: rates.rateEURtoUAH,
-                rateEURtoBGN: rates.rateEURtoBGN,
-                lastRatesUpdate: rates.lastUpdate
+                lastRatesUpdate: rates.lastUpdate,
+                lastRatesDate: rates.lastRatesDate
             };
 
             DataManager.updateSettings(updatedSettings);
             await window.BudgetApp.saveData();
 
             this.updateExchangeRatesDisplay();
+            // Пересчитать с новым курсом
+            this.renderReferenceTable();
+            this.renderBudgetSummary();
 
-            alert(`Курсы обновлены:\n1 EUR = ${rates.rateEURtoUAH.toFixed(4)} UAH\n1 EUR = ${rates.rateEURtoBGN.toFixed(4)} BGN`);
-
-            console.log('✅ Курсы валют обновлены');
+            const dateStr = DateUtils.formatDate(rates.lastRatesDate);
+            console.log(`✅ Курсы валют обновлены (на ${dateStr})`);
+            // Тихое обновление — без alert, чтобы не раздражать
         } catch (error) {
             console.error('❌ Ошибка обновления курсов:', error);
-            alert('Ошибка обновления курсов валют. Попробуйте позже.');
+            alert('Не удалось обновить курсы валют. Проверьте подключение к интернету.');
         }
     }
 
@@ -1502,10 +1719,11 @@ export class UIManager {
         const config = DataManager.getConfig();
         const settings = config.settings || config;
 
-        // День начала периода
+        // День начала периода — читаем с fallback'ом на верхний уровень config
+        // (исправление: раньше после сохранения значение читалось только из settings и сбрасывалось)
         const periodStartDay = document.getElementById('period-start-day');
         if (periodStartDay) {
-            periodStartDay.value = settings.periodStartDay || 25;
+            periodStartDay.value = settings.periodStartDay || config.periodStartDay || 25;
         }
 
         // Лимиты
@@ -1526,6 +1744,19 @@ export class UIManager {
         const taxRate = document.getElementById('tax-rate');
         if (taxRate) {
             taxRate.value = settings.taxRate || 0;
+        }
+
+        // Категория по умолчанию: заполнить выпадающий список и выбрать сохранённую
+        const defaultCategorySelect = document.getElementById('default-category-select');
+        if (defaultCategorySelect) {
+            const categories = [...DataManager.getCategories()]
+                .sort((a, b) => (a.order || 0) - (b.order || 0));
+            const savedDefault = settings.defaultCategoryId || '';
+
+            defaultCategorySelect.innerHTML = '<option value="">— первая в справочнике —</option>' +
+                categories.map(cat =>
+                    `<option value="${cat.id}"${cat.id === savedDefault ? ' selected' : ''}>${cat.name}</option>`
+                ).join('');
         }
 
         // Обновить курсы
@@ -1563,6 +1794,12 @@ export class UIManager {
         const limitCrypto = parseFloat(document.getElementById('limit-crypto').value) || 0;
         const taxRate = parseFloat(document.getElementById('tax-rate').value) || 0;
 
+        // Категория по умолчанию (пустая строка = «первая в справочнике»)
+        const defaultCategorySelectEl = document.getElementById('default-category-select');
+        const defaultCategoryId = defaultCategorySelectEl
+            ? (defaultCategorySelectEl.value || null)
+            : null;
+
         // Автоматический расчет дохода
         const incomeEuro = limitFop + limitCrypto;
 
@@ -1584,12 +1821,15 @@ export class UIManager {
                 incomeEuro,
                 limitFop,
                 limitCrypto,
-                taxRate
+                taxRate,
+                // periodStartDay храним и здесь — иначе loadSettings его не показывает корректно
+                periodStartDay,
+                defaultCategoryId
             };
 
             DataManager.updateSettings(updatedSettings);
 
-            // Обновить periodStartDay на верхнем уровне config
+            // Дублируем periodStartDay и на верхний уровень config — для обратной совместимости
             DataManager.updateConfig({
                 periodStartDay
             });
