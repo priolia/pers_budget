@@ -34,11 +34,11 @@ export const CONFIG = {
     DEFAULTS: {
         PERIOD_START_DAY: 25,
         RATE_EUR_TO_UAH: 48.40,
-        RATE_EUR_TO_BGN: 1.9558,
         TAX_RATE: 7.3,
         LIMIT_FOP: 2200,
         LIMIT_CRYPTO: 1100,
-        INCOME_EURO: 3300
+        INCOME_EURO: 3300,
+        DEFAULT_CATEGORY_ID: null
     },
 
     // Форматы ID
