@@ -550,37 +550,78 @@ button:disabled {
         font-size: 24px;
     }
 
-    /* Таблицы: горизонтальный скролл, и «залипшая» первая колонка */
+    /* Таблицы: горизонтальный скролл */
     .table-container {
         overflow-x: auto;
         -webkit-overflow-scrolling: touch;
     }
 
-    /* Залипшая первая колонка таблиц — чтобы при скролле было видно «о чём строка» */
-    .table-container table th:first-child,
-    .table-container table td:first-child {
+    /* В таблице ТРАТ — sticky первая колонка (Описание).
+       Описание обрезается троеточием, чтобы не съесть пол-экрана. */
+    #expenses-table th:first-child,
+    #expenses-table td:first-child {
+        position: sticky;
+        left: 0;
+        z-index: 2;
+        background: #ffffff;
+        max-width: 140px;
+        min-width: 110px;
+    }
+
+    /* Сжатый input описания в sticky-колонке */
+    #expenses-table td.col-description input {
+        width: 100%;
+        box-sizing: border-box;
+        font-size: 13px !important;
+        text-overflow: ellipsis;
+    }
+
+    #expenses-table thead th:first-child {
+        background: #f5f5f5;
+    }
+
+    /* В таблице БЮДЖЕТА — sticky первая колонка (Категория) */
+    #budget-summary-table th:first-child,
+    #budget-summary-table td:first-child {
         position: sticky;
         left: 0;
         z-index: 2;
         background: inherit;
     }
 
-    /* У заголовка особый фон (он серый по умолчанию) */
-    .table-container table thead th:first-child {
+    #budget-summary-table thead th:first-child {
         background: #f5f5f5;
     }
 
     /* Цветные строки бюджета — нужно подложить такой же фон, иначе при скролле sticky-колонка
        будет «прозрачной» и текст из других столбцов будет проглядывать сквозь неё */
-    .table-container table tbody tr.budget-under-50 td:first-child { background: #e8f5e9; }
-    .table-container table tbody tr.budget-50-90 td:first-child { background: #fff8e1; }
-    .table-container table tbody tr.budget-90-100 td:first-child { background: #ffe0b2; }
-    .table-container table tbody tr.budget-over-100 td:first-child { background: #ffcdd2; }
+    #budget-summary-table tbody tr.budget-under-50 td:first-child { background: #e8f5e9; }
+    #budget-summary-table tbody tr.budget-50-90 td:first-child { background: #fff8e1; }
+    #budget-summary-table tbody tr.budget-90-100 td:first-child { background: #ffe0b2; }
+    #budget-summary-table tbody tr.budget-over-100 td:first-child { background: #ffcdd2; }
 
-    /* Полоса «Всего» — серая */
-    .table-container table tfoot tr.total-row td:first-child {
+    #budget-summary-table tfoot tr.total-row td:first-child {
         background: #f0f0f0;
     }
+
+    /* В таблице СПРАВОЧНИКА — sticky первая колонка (Порядок со стрелками), узкая */
+    #reference-table th:first-child,
+    #reference-table td:first-child {
+        position: sticky;
+        left: 0;
+        z-index: 2;
+        background: inherit;
+        min-width: 70px;
+    }
+
+    #reference-table thead th:first-child {
+        background: #f5f5f5;
+    }
+
+    #reference-table tbody tr.budget-under-50 td:first-child { background: #e8f5e9; }
+    #reference-table tbody tr.budget-50-90 td:first-child { background: #fff8e1; }
+    #reference-table tbody tr.budget-90-100 td:first-child { background: #ffe0b2; }
+    #reference-table tbody tr.budget-over-100 td:first-child { background: #ffcdd2; }
 
     /* Компактнее ячейки */
     .table-container table th,
