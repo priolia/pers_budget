@@ -7,7 +7,76 @@ import { DataManager } from './dataManager.js';
 import { DateUtils } from './utils/dates.js';
 import { CurrencyUtils } from './utils/currency.js';
 
+/**
+ * Словарь автоматических иконок для новых категорий.
+ * Порядок ВАЖЕН: проверка идёт сверху вниз, первое совпадение выигрывает.
+ * Поэтому специальные кейсы (типа "Ицо") должны быть раньше общих ("кредит").
+ */
+const ICON_SUGGESTIONS = [
+    // Специальные кейсы — ВПЕРЕДИ
+    { keywords: ['ицо'], icon: '🎸' },
+
+    // Еда и быт
+    { keywords: ['еда', 'хоз', 'продукт', 'супермарк'], icon: '🛒' },
+    { keywords: ['кафе', 'ресторан', 'бар', 'заведен'], icon: '🍔' },
+
+    // Здоровье
+    { keywords: ['аптек', 'лекарств', 'бад', 'витамин'], icon: '💊' },
+    { keywords: ['врач', 'медицин', 'клиник', 'больниц'], icon: '🏥' },
+    { keywords: ['психолог', 'психотерап'], icon: '🧘🏻‍♂️' },
+
+    // Красота
+    { keywords: ['ресниц'], icon: '🧏‍♀️' },
+    { keywords: ['парикмахер'], icon: '💇🏼‍♀️' },
+    { keywords: ['маникюр', 'педикюр', 'ногт', 'салон', 'красот', 'космет'], icon: '💅' },
+
+    // Жильё и обязательные платежи
+    { keywords: ['аренд', 'жиль', 'квартир'], icon: '🏠' },
+    { keywords: ['коммунал', 'услуг', 'подписк', 'интернет', 'связ'], icon: '💡' },
+    { keywords: ['налог', 'фоп', 'отчислен', 'сбор'], icon: '🏛' },
+
+    // Финансы
+    { keywords: ['инвест', 'сбережен', 'накоплен', 'депозит'], icon: '💶' },
+    { keywords: ['кредит', 'ипотек', 'рассрочк'], icon: '🏦' },
+
+    // Транспорт и шопинг
+    { keywords: ['транспорт', 'бензин', 'машин', 'такси', 'авто'], icon: '🚗' },
+    { keywords: ['одежд', 'обувь'], icon: '👕' },
+
+    // Прочее
+    { keywords: ['сигарет', 'табак', 'вейп'], icon: '🚬' },
+    { keywords: ['развлечен', 'кино', 'путешеств', 'отдых'], icon: '🎬' },
+    { keywords: ['подар', 'благотвор', 'донат'], icon: '🎁' },
+    { keywords: ['образован', 'курс', 'книг', 'обучен'], icon: '📚' },
+    { keywords: ['дет', 'школ', 'садик'], icon: '🧒' },
+    { keywords: ['разное', 'дом', 'музык', 'прочее'], icon: '📦' }
+];
+
+/**
+ * Предложить иконку по названию категории. Возвращает emoji или null, если ничего не подошло.
+ */
+function suggestIconForCategory(name) {
+    if (!name) return null;
+    const lower = name.toLowerCase();
+    for (const entry of ICON_SUGGESTIONS) {
+        if (entry.keywords.some(kw => lower.includes(kw))) {
+            return entry.icon;
+        }
+    }
+    return null;
+}
+
 export class UIManager {
+    /**
+     * Отображение названия категории: «иконка пробел название».
+     * Если иконки нет — просто название.
+     */
+    static formatCategoryName(category) {
+        if (!category) return '';
+        const icon = (category.icon || '').trim();
+        return icon ? `${icon} ${category.name}` : category.name;
+    }
+
     // ============================================
     // ГРУППА 1: ИНИЦИАЛИЗАЦИЯ
     // ============================================
@@ -358,7 +427,7 @@ export class UIManager {
 
         if (sortedCategories.length === 0) {
             const tr = document.createElement('tr');
-            tr.innerHTML = `<td colspan="9" class="empty-state">
+            tr.innerHTML = `<td colspan="10" class="empty-state">
                 <span class="empty-state-icon">📂</span>
                 Категорий пока нет — нажмите «Добавить категорию», чтобы начать.
             </td>`;
@@ -405,6 +474,11 @@ export class UIManager {
                                 onclick="window.BudgetApp.UIManager.moveCategoryDown('${category.id}')"
                                 ${isLast ? 'disabled' : ''}>▼</button>
                     </div>
+                </td>
+                <td>
+                    <input type="text" class="category-icon" maxlength="4"
+                           value="${category.icon || ''}" data-original="${category.icon || ''}"
+                           placeholder="—" style="width: 50px; text-align: center; font-size: 18px;">
                 </td>
                 <td>
                     <input type="text" class="category-name" value="${category.name}"
@@ -585,12 +659,11 @@ export class UIManager {
             row.dataset.expenseId = expense.id;
 
             row.innerHTML = `
-                <td><input type="datetime-local" class="expense-date" value="${dateValue}"></td>
-                <td><input type="text" class="expense-description" value="${expense.description}"></td>
+                <td class="col-description"><input type="text" class="expense-description" value="${expense.description}"></td>
                 <td>
                     <select class="category-select">
                         ${categories.map(cat =>
-                            `<option value="${cat.id}" ${cat.id === expense.categoryId ? 'selected' : ''}>${cat.name}</option>`
+                            `<option value="${cat.id}" ${cat.id === expense.categoryId ? 'selected' : ''}>${UIManager.formatCategoryName(cat)}</option>`
                         ).join('')}
                     </select>
                 </td>
@@ -608,6 +681,7 @@ export class UIManager {
                     <button class="button-secondary" onclick="window.BudgetApp.UIManager.updateExpenseInline('${expense.id}')" title="Обновить">🔄</button>
                     <button class="button-danger" onclick="window.BudgetApp.UIManager.deleteExpense('${expense.id}')" title="Удалить">🗑️</button>
                 </td>
+                <td><input type="datetime-local" class="expense-date" value="${dateValue}"></td>
             `;
 
             tbody.appendChild(row);
@@ -682,7 +756,7 @@ export class UIManager {
             row.className = colorClass;
 
             row.innerHTML = `
-                <td>${category.name}</td>
+                <td>${UIManager.formatCategoryName(category)}</td>
                 <td>${plan.toFixed(2)}</td>
                 <td>${fact.toFixed(2)}</td>
                 <td>${percentage.toFixed(2)}%</td>
@@ -988,21 +1062,33 @@ export class UIManager {
             return;
         }
 
+        const trimmedName = categoryName.trim();
+
         // Проверка на дубликаты
         const categories = DataManager.getCategories();
-        if (categories.some(cat => cat.name === categoryName.trim())) {
+        if (categories.some(cat => cat.name === trimmedName)) {
             alert('Категория с таким именем уже существует');
             return;
         }
+
+        // Предложить иконку по словарю (можно отказаться)
+        const suggested = suggestIconForCategory(trimmedName) || '';
+        const promptText = suggested
+            ? `Иконка для категории «${trimmedName}»\n(предлагается: ${suggested}, можно изменить или оставить пусто):`
+            : `Иконка для категории «${trimmedName}»\n(можно вписать emoji или оставить пусто):`;
+        const iconInput = prompt(promptText, suggested);
+        // Если нажали "Отмена" — iconInput === null. В этом случае иконку не ставим.
+        const icon = (iconInput === null) ? '' : iconInput.trim();
 
         try {
             // Новая категория уходит в конец списка
             const maxOrder = categories.reduce((m, c) => Math.max(m, c.order || 0), 0);
             const newCategory = DataManager.addCategory({
-                name: categoryName.trim(),
+                name: trimmedName,
                 limit: 0,
                 percentage: 0,
-                order: maxOrder + 1
+                order: maxOrder + 1,
+                icon
             });
 
             // Перенумеруем на всякий случай — вдруг были дырки в старых данных
@@ -1140,6 +1226,8 @@ export class UIManager {
         const name = row.querySelector('.category-name').value.trim();
         const limit = parseFloat(row.querySelector('.category-limit').value) || 0;
         const percentage = parseFloat(row.querySelector('.category-percentage').value) || 0;
+        const iconEl = row.querySelector('.category-icon');
+        const icon = iconEl ? iconEl.value.trim() : '';
         // order больше не редактируется через эту кнопку — он управляется стрелками ↑↓
 
         if (!name) {
@@ -1159,7 +1247,8 @@ export class UIManager {
             DataManager.updateCategory(categoryId, {
                 name,
                 limit,
-                percentage
+                percentage,
+                icon
             });
 
             await window.BudgetApp.saveData();
@@ -1212,12 +1301,11 @@ export class UIManager {
         const dateValue = now.toISOString().slice(0, 16);
 
         row.innerHTML = `
-            <td><input type="datetime-local" value="${dateValue}" required></td>
-            <td><input type="text" placeholder="Описание" required></td>
+            <td class="col-description"><input type="text" placeholder="Описание" required></td>
             <td>
                 <select class="category-select" required>
                     ${categories.map(cat =>
-                        `<option value="${cat.id}"${cat.id === selectedCategoryId ? ' selected' : ''}>${cat.name}</option>`
+                        `<option value="${cat.id}"${cat.id === selectedCategoryId ? ' selected' : ''}>${UIManager.formatCategoryName(cat)}</option>`
                     ).join('')}
                 </select>
             </td>
@@ -1235,6 +1323,7 @@ export class UIManager {
                 <button class="button-primary" onclick="window.BudgetApp.UIManager.saveExpenseFromRow(this)">💾</button>
                 <button class="button-danger" onclick="window.BudgetApp.UIManager.cancelExpense(this)">❌</button>
             </td>
+            <td><input type="datetime-local" value="${dateValue}" required></td>
         `;
 
         tbody.insertBefore(row, tbody.firstChild);
@@ -1417,12 +1506,11 @@ export class UIManager {
         // Заменить содержимое строки на редактируемую форму
         targetRow.className = 'expense-row expense-row-unsaved';
         targetRow.innerHTML = `
-            <td><input type="datetime-local" value="${dateValue}" required></td>
-            <td><input type="text" value="${expense.description}" placeholder="Описание" required></td>
+            <td class="col-description"><input type="text" value="${expense.description}" placeholder="Описание" required></td>
             <td>
                 <select class="category-select" required>
                     ${categories.map(cat =>
-                        `<option value="${cat.id}" ${cat.id === expense.categoryId ? 'selected' : ''}>${cat.name}</option>`
+                        `<option value="${cat.id}" ${cat.id === expense.categoryId ? 'selected' : ''}>${UIManager.formatCategoryName(cat)}</option>`
                     ).join('')}
                 </select>
             </td>
@@ -1440,6 +1528,7 @@ export class UIManager {
                 <button class="button-primary" onclick="window.BudgetApp.UIManager.updateExpenseFromRow(this, '${expenseId}')">💾</button>
                 <button class="button-danger" onclick="window.BudgetApp.UIManager.cancelExpenseEdit(this, '${expenseId}')">❌</button>
             </td>
+            <td><input type="datetime-local" value="${dateValue}" required></td>
         `;
 
         // Фокус на поле описания
@@ -1647,7 +1736,7 @@ export class UIManager {
         sortedCategories.forEach(category => {
             const option = document.createElement('option');
             option.value = category.id;
-            option.textContent = category.name;
+            option.textContent = UIManager.formatCategoryName(category);
             if (category.id === currentValue) {
                 option.selected = true;
             }
@@ -1780,7 +1869,7 @@ export class UIManager {
 
             defaultCategorySelect.innerHTML = '<option value="">— первая в справочнике —</option>' +
                 categories.map(cat =>
-                    `<option value="${cat.id}"${cat.id === savedDefault ? ' selected' : ''}>${cat.name}</option>`
+                    `<option value="${cat.id}"${cat.id === savedDefault ? ' selected' : ''}>${UIManager.formatCategoryName(cat)}</option>`
                 ).join('');
         }
 
