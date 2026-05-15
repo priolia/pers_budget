@@ -1,26 +1,21 @@
 /**
  * Утилиты для работы с валютами и конвертацией
+ * v2.1 (2026): только EUR и UAH. BGN удалён — Болгария в еврозоне с 01.01.2026.
  */
 
 export class CurrencyUtils {
     /**
      * Конвертировать EUR в другие валюты
-     * @param {number} amountEUR - Сумма в EUR
-     * @param {Object} rates - Курсы валют {rateEURtoUAH, rateEURtoBGN}
      */
     static convertFromEUR(amountEUR, rates) {
         return {
             EUR: parseFloat(amountEUR.toFixed(2)),
-            UAH: parseFloat((amountEUR * rates.rateEURtoUAH).toFixed(2)),
-            BGN: parseFloat((amountEUR * rates.rateEURtoBGN).toFixed(2))
+            UAH: parseFloat((amountEUR * rates.rateEURtoUAH).toFixed(2))
         };
     }
 
     /**
      * Конвертировать из любой валюты в EUR и другие
-     * @param {number} amount - Сумма
-     * @param {string} fromCurrency - Исходная валюта (EUR, UAH, BGN)
-     * @param {Object} rates - Курсы валют
      */
     static convertToAll(amount, fromCurrency, rates) {
         let amountEUR;
@@ -32,9 +27,6 @@ export class CurrencyUtils {
             case 'UAH':
                 amountEUR = amount / rates.rateEURtoUAH;
                 break;
-            case 'BGN':
-                amountEUR = amount / rates.rateEURtoBGN;
-                break;
             default:
                 console.error('Неизвестная валюта:', fromCurrency);
                 amountEUR = amount;
@@ -45,9 +37,6 @@ export class CurrencyUtils {
 
     /**
      * Форматировать сумму с валютой
-     * @param {number} amount - Сумма
-     * @param {string} currency - Валюта
-     * @param {boolean} showSymbol - Показывать символ валюты
      */
     static formatAmount(amount, currency = 'EUR', showSymbol = true) {
         const formatted = new Intl.NumberFormat('ru-RU', {
@@ -61,64 +50,63 @@ export class CurrencyUtils {
 
         const symbols = {
             'EUR': '€',
-            'UAH': '₴',
-            'BGN': 'лв'
+            'UAH': '₴'
         };
 
         return `${formatted} ${symbols[currency] || currency}`;
     }
 
     /**
-     * Получить актуальные курсы с Monobank API
+     * Получить актуальные курсы с Monobank API.
+     * Возвращает {rateEURtoUAH, lastUpdate, lastRatesDate, source}.
+     * Бросает ошибку при сетевых проблемах — вызывающий код должен её ловить.
      */
     static async fetchMonobankRates() {
-        try {
-            const response = await fetch('https://api.monobank.ua/bank/currency');
+        const response = await fetch('https://api.monobank.ua/bank/currency');
 
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}`);
-            }
-
-            const rates = await response.json();
-
-            // Ищем EUR -> UAH (код 978 -> 980)
-            const eurToUah = rates.find(r =>
-                r.currencyCodeA === 978 && r.currencyCodeB === 980
-            );
-
-            // Ищем EUR -> BGN через кросс-курс (EUR->USD->BGN)
-            // Если нет прямого курса, используем дефолтное значение
-            const eurToBgn = 1.9558; // Фиксированный курс (примерно)
-
-            return {
-                rateEURtoUAH: eurToUah ? eurToUah.rateSell : 48.40,
-                rateEURtoBGN: eurToBgn,
-                lastUpdate: new Date().toISOString(),
-                source: 'monobank'
-            };
-        } catch (error) {
-            console.error('Ошибка получения курсов Monobank:', error);
-            throw error;
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
         }
+
+        const rates = await response.json();
+
+        // Ищем EUR -> UAH (код 978 -> 980)
+        const eurToUah = rates.find(r =>
+            r.currencyCodeA === 978 && r.currencyCodeB === 980
+        );
+
+        if (!eurToUah) {
+            throw new Error('Курс EUR→UAH не найден в ответе Monobank');
+        }
+
+        // Среднее между покупкой и продажей даёт более реалистичный курс
+        const rate = (eurToUah.rateBuy && eurToUah.rateSell)
+            ? (eurToUah.rateBuy + eurToUah.rateSell) / 2
+            : (eurToUah.rateSell || eurToUah.rateBuy || eurToUah.rateCross);
+
+        // Monobank присылает date в Unix seconds
+        const rateDate = eurToUah.date ? new Date(eurToUah.date * 1000) : new Date();
+
+        return {
+            rateEURtoUAH: parseFloat(rate.toFixed(4)),
+            lastUpdate: new Date().toISOString(),
+            lastRatesDate: rateDate.toISOString(),
+            source: 'monobank'
+        };
     }
 
     /**
      * Рассчитать общий доход в разных валютах
-     * @param {number} incomeEuro - Доход в EUR
-     * @param {Object} rates - Курсы валют
      */
     static calculateTotalIncome(incomeEuro, rates) {
         return {
             incomeEuro: incomeEuro,
-            totalIncomeUAH: parseFloat((incomeEuro * rates.rateEURtoUAH).toFixed(2)),
-            totalIncomeBGN: parseFloat((incomeEuro * rates.rateEURtoBGN).toFixed(2))
+            totalIncomeUAH: parseFloat((incomeEuro * rates.rateEURtoUAH).toFixed(2))
         };
     }
 
     /**
      * Рассчитать налог
-     * @param {number} amount - Сумма
-     * @param {number} taxRate - Ставка налога (в процентах)
      */
     static calculateTax(amount, taxRate) {
         return parseFloat((amount * taxRate / 100).toFixed(2));
@@ -126,12 +114,10 @@ export class CurrencyUtils {
 
     /**
      * Проверить превышение лимита
-     * @param {number} amount - Текущая сумма
-     * @param {number} limit - Лимит
      */
     static checkLimit(amount, limit) {
         const remaining = limit - amount;
-        const percentage = (amount / limit) * 100;
+        const percentage = limit > 0 ? (amount / limit) * 100 : 0;
 
         return {
             amount: amount,
@@ -147,14 +133,11 @@ export class CurrencyUtils {
 
     /**
      * Суммировать траты по валюте
-     * @param {Array} expenses - Массив трат
-     * @param {string} currency - Валюта для суммирования
      */
     static sumExpenses(expenses, currency = 'EUR') {
         const fieldMap = {
             'EUR': 'amountEUR',
-            'UAH': 'amountUAH',
-            'BGN': 'amountBGN'
+            'UAH': 'amountUAH'
         };
 
         const field = fieldMap[currency.toUpperCase()];
@@ -171,26 +154,20 @@ export class CurrencyUtils {
 
     /**
      * Суммировать траты по категориям
-     * @param {Array} expenses - Массив трат
-     * @param {string} currency - Валюта для суммирования
      */
     static sumByCategory(expenses, currency = 'EUR') {
         const sums = {};
+        const fieldMap = {
+            'EUR': 'amountEUR',
+            'UAH': 'amountUAH'
+        };
+        const field = fieldMap[currency.toUpperCase()];
 
         expenses.forEach(expense => {
             const categoryId = expense.categoryId;
-
             if (!sums[categoryId]) {
                 sums[categoryId] = 0;
             }
-
-            const fieldMap = {
-                'EUR': 'amountEUR',
-                'UAH': 'amountUAH',
-                'BGN': 'amountBGN'
-            };
-
-            const field = fieldMap[currency.toUpperCase()];
             sums[categoryId] += expense[field] || 0;
         });
 
@@ -199,9 +176,6 @@ export class CurrencyUtils {
 
     /**
      * Рассчитать статистику по категории
-     * @param {Array} expenses - Траты категории
-     * @param {number} limit - Лимит категории
-     * @param {string} currency - Валюта
      */
     static calculateCategoryStats(expenses, limit, currency = 'EUR') {
         const total = this.sumExpenses(expenses, currency);
