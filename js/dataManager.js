@@ -157,7 +157,6 @@ class DataManagerClass {
             currency: expenseData.currency || 'EUR',
             amountEUR: expenseData.amountEUR || expenseData.amount || 0,
             amountUAH: expenseData.amountUAH || 0,
-            amountBGN: expenseData.amountBGN || 0,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString()
         };
@@ -227,14 +226,15 @@ class DataManagerClass {
             periodStartDay: CONFIG.DEFAULTS.PERIOD_START_DAY,
             settings: {
                 rateEURtoUAH: CONFIG.DEFAULTS.RATE_EUR_TO_UAH,
-                rateEURtoBGN: CONFIG.DEFAULTS.RATE_EUR_TO_BGN,
                 taxRate: CONFIG.DEFAULTS.TAX_RATE,
                 limitFop: CONFIG.DEFAULTS.LIMIT_FOP,
                 limitCrypto: CONFIG.DEFAULTS.LIMIT_CRYPTO,
                 incomeEuro: CONFIG.DEFAULTS.INCOME_EURO,
+                periodStartDay: CONFIG.DEFAULTS.PERIOD_START_DAY,
+                defaultCategoryId: null,
                 totalIncomeUAH: 0,
-                totalIncomeBGN: 0,
-                lastRatesUpdate: null
+                lastRatesUpdate: null,
+                lastRatesDate: null
             }
         };
     }
