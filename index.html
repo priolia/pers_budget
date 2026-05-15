@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Персональное бюджетирование v2.0</title>
+    <title>Персональное бюджетирование v2.1</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%234CAF50' width='100' height='100' rx='15'/><text x='50' y='75' font-size='70' text-anchor='middle' fill='white' font-family='Arial'>€</text></svg>">
     <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
     <!-- Экран логина -->
     <div id="login-screen" class="login-container">
-        <h2>Вход в систему бюджетирования v2.0</h2>
+        <h2>Вход в систему бюджетирования</h2>
         <form id="login-form">
             <div class="form-group">
                 <label for="password-input">Пароль:</label>
@@ -20,7 +20,7 @@
             <button type="submit" id="login-button">Войти</button>
         </form>
         <p style="margin-top: 20px; font-size: 12px; color: #999;">
-            Budget App v2.0 | API: <span id="api-status">проверка...</span>
+            Budget App v2.1 | API: <span id="api-status">проверка...</span>
         </p>
     </div>
 
@@ -34,16 +34,17 @@
                 <span class="settings-link" data-action="logout">Выход</span>
             </div>
 
-            <h1>Персональное бюджетирование v2.0</h1>
+            <h1>Персональное бюджетирование</h1>
 
             <!-- Информация о курсах валют -->
             <div class="exchange-info">
                 <div class="rates-container" id="exchange-rates">
-                    <div class="rate-item">Загрузка курсов валют...</div>
+                    <div class="rate-item">Загрузка курсов валют…</div>
                 </div>
                 <div style="font-size: 12px; margin-top: 5px;">
-                    Последнее обновление: <span id="last-update">—</span>
-                    <button class="button-secondary" data-action="update-rates" style="padding: 3px 8px; font-size: 12px; margin-left: 10px;">Обновить курсы</button>
+                    Курс ЕЦБ/Monobank: <span id="rates-date">—</span>
+                    · Обновлено: <span id="last-update">—</span>
+                    <button class="button-secondary" data-action="update-rates" style="padding: 3px 8px; font-size: 12px; margin-left: 10px;">↻ Обновить</button>
                 </div>
             </div>
 
@@ -54,6 +55,7 @@
                     <!-- Будет заполнено динамически -->
                 </select>
                 <button class="button-secondary" id="current-period-btn">Текущий период</button>
+                <span class="period-info" id="period-info"></span>
             </div>
 
             <!-- Вкладки -->
@@ -77,7 +79,7 @@
                     <table id="reference-table">
                         <thead>
                             <tr>
-                                <th style="width: 60px;">Порядок</th>
+                                <th style="width: 90px;">Порядок</th>
                                 <th>Категория</th>
                                 <th>Лимит (€)</th>
                                 <th>% от бюджета</th>
@@ -159,6 +161,43 @@
             <div id="budget-tab" class="tab-content active">
                 <h2>Сводка бюджета</h2>
 
+                <!-- Карточки итогов -->
+                <div class="summary-cards">
+                    <div class="card card-neutral">
+                        <div class="card-label">Доход</div>
+                        <div class="card-value" id="summary-income">0.00 €</div>
+                    </div>
+                    <div class="card card-neutral">
+                        <div class="card-label">Потрачено</div>
+                        <div class="card-value" id="summary-fact">0.00 €</div>
+                    </div>
+                    <div class="card card-warning">
+                        <div class="card-label">Запланировано ещё потратить</div>
+                        <div class="card-value" id="summary-planned-rest">0.00 €</div>
+                        <div class="card-hint">по категориям, где факт &lt; план</div>
+                    </div>
+                    <div class="card card-primary" id="free-funds-card">
+                        <div class="card-label">Свободно</div>
+                        <div class="card-value" id="free-funds">0.00 €</div>
+                        <div class="card-hint">можно тратить без ущерба плану</div>
+                    </div>
+                    <div class="card card-danger" id="overspend-card" style="display:none;">
+                        <div class="card-label">Перерасход</div>
+                        <div class="card-value" id="summary-overspend">0.00 €</div>
+                        <div class="card-hint">сумма превышений по категориям</div>
+                    </div>
+                    <div class="card card-success">
+                        <div class="card-label">Отложено</div>
+                        <div class="card-value" id="saved-euro">0.00 €</div>
+                        <div class="card-hint">«Инвестиции и сбережения»</div>
+                    </div>
+                </div>
+
+                <!-- Виджет «дней до конца периода» -->
+                <div class="days-widget" id="days-widget">
+                    <span id="days-widget-text">—</span>
+                </div>
+
                 <div class="table-container">
                     <table id="budget-summary-table">
                         <thead>
@@ -182,32 +221,6 @@
                                 <td id="total-remaining">0.00</td>
                             </tr>
                         </tfoot>
-                    </table>
-                </div>
-
-                <div class="total-section">
-                    <h3>Итоги</h3>
-                    <table>
-                        <tr>
-                            <td>Доход (€):</td>
-                            <td id="summary-income">0.00</td>
-                        </tr>
-                        <tr>
-                            <td>Запланировано в бюджет:</td>
-                            <td id="budget-planned-percent">0%</td>
-                        </tr>
-                        <tr>
-                            <td>Факт расходов (€):</td>
-                            <td id="summary-fact">0.00</td>
-                        </tr>
-                        <tr>
-                            <td>Свободные средства (€):</td>
-                            <td id="free-funds">0.00</td>
-                        </tr>
-                        <tr>
-                            <td>Отложено евро:</td>
-                            <td id="saved-euro">0.00</td>
-                        </tr>
                     </table>
                 </div>
 
@@ -236,7 +249,18 @@
                         <label for="period-start-day">День начала периода (1-28):</label>
                         <input type="number" id="period-start-day" min="1" max="28" value="25">
                         <small>Текущий период: <span id="current-period-display">—</span></small>
-                        <small style="display: block; margin-top: 5px; color: #666;">Для применения изменений нажмите кнопку "Сохранить настройки" ниже</small>
+                        <small style="display: block; margin-top: 5px; color: #666;">Для применения изменений нажмите кнопку «Сохранить настройки» ниже</small>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h3>📝 Категория по умолчанию</h3>
+                    <div class="form-group">
+                        <label for="default-category-select">Какая категория выбирается при добавлении новой траты:</label>
+                        <select id="default-category-select">
+                            <option value="">— первая в справочнике —</option>
+                        </select>
+                        <small style="display: block; margin-top: 5px; color: #666;">Сохраняется кнопкой «Сохранить настройки» ниже</small>
                     </div>
                 </div>
 
@@ -244,8 +268,8 @@
                     <h3>💱 Курсы валют</h3>
                     <div class="form-group">
                         <label>EUR → UAH: <span id="rate-uah-display">—</span></label>
-                        <label>EUR → BGN: <span id="rate-bgn-display">—</span></label>
-                        <button class="button-secondary" data-action="update-rates">🔄 Обновить курсы с Monobank</button>
+                        <small style="display: block; color: #666;">Курс ЕЦБ через Monobank на дату: <span id="rate-uah-date">—</span></small>
+                        <button class="button-secondary" data-action="update-rates">🔄 Обновить курсы</button>
                     </div>
                 </div>
 
@@ -299,7 +323,7 @@
 
                 <div class="section">
                     <h3>ℹ️ О приложении</h3>
-                    <p>Версия: <span id="app-version">2.0.0</span></p>
+                    <p>Версия: <span id="app-version">2.1.0</span></p>
                     <p>API версия: <span id="api-version">—</span></p>
                 </div>
             </div>
@@ -309,7 +333,7 @@
     <!-- Chart.js для визуализации данных -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-    <!-- Budget App v2.0 Modules -->
+    <!-- Budget App v2.1 Modules -->
     <script type="module" src="js/main.js"></script>
 </body>
 </html>
