@@ -715,32 +715,26 @@ export class UIManager {
         document.getElementById('total-percentage').textContent = totalPercentage.toFixed(2) + '%';
         document.getElementById('total-remaining').textContent = totalRemaining.toFixed(2);
 
-        // ─── Карточки итогов ───
+        // ─── Карточки итогов: ВЕРХ (главные) и НИЗ ───
         const incomeEuro = config.settings?.incomeEuro || config.incomeEuro || 0;
         const setText = (id, text) => {
             const el = document.getElementById(id);
             if (el) el.textContent = text;
         };
 
+        // НИЗ
         setText('summary-income', `${incomeEuro.toFixed(2)} €`);
         setText('summary-fact', `${totalFact.toFixed(2)} €`);
         setText('summary-planned-rest', `${totalPlannedRest.toFixed(2)} €`);
 
-        // ─── Свободно = Доход − Факт − (запланировано ещё потратить) ───
-        // Это деньги, которые можно тратить НА ЧТО УГОДНО, не сломав план.
+        // «Свободно» = Доход − Факт − (запланировано ещё потратить).
+        // Не выводится отдельной карточкой, но используется в карточке дней наверху.
         const freeFunds = incomeEuro - totalFact - totalPlannedRest;
-        setText('free-funds', `${freeFunds.toFixed(2)} €`);
 
-        // Если "Свободно" отрицательное — карточка становится красной
-        const freeFundsCard = document.getElementById('free-funds-card');
-        if (freeFundsCard) {
-            freeFundsCard.classList.toggle('is-negative', freeFunds < 0);
-        }
-
-        // ─── Перерасход (показываем только если есть) ───
+        // ─── Перерасход (НИЗ): только если ≥ 50 копеек ───
         const overspendCard = document.getElementById('overspend-card');
         if (overspendCard) {
-            if (totalOverspend > 0.005) {
+            if (totalOverspend >= 0.5) {
                 overspendCard.style.display = '';
                 setText('summary-overspend', `−${totalOverspend.toFixed(2)} €`);
             } else {
@@ -748,65 +742,96 @@ export class UIManager {
             }
         }
 
-        // ─── Отложено (категория "Инвестиции и сбережения") ───
+        // ─── Отложено (НИЗ): категория «Инвестиции и сбережения» ───
         const savingsCategory = categories.find(cat => cat.name === 'Инвестиции и сбережения');
         const savedEuro = savingsCategory ? (categoryTotals[savingsCategory.id] || 0) : 0;
         setText('saved-euro', `${savedEuro.toFixed(2)} €`);
 
-        // ─── Виджет "До конца периода N дней" ───
-        this._updateDaysWidget(incomeEuro, totalFact, totalPlannedRest);
+        // ─── ВЕРХ: дни / % исполнения / план в день ───
+        this._updateTopCards(incomeEuro, totalFact, totalPlan, totalPlannedRest, freeFunds);
 
         // Обновить график
         this.updateChart(categories, categoryTotals);
     }
 
     /**
-     * Виджет «N дней до конца периода, средний дневной остаток».
-     * Считается как: (доход − факт − запланированный остаток по плану) / число оставшихся дней
+     * Верхний блок из трёх главных карточек:
+     *   1) «До конца периода» — дни, всего свободно, на день
+     *   2) «% исполнения бюджета» — Σ факт / Σ план
+     *   3) «План в день» — Запланировано ещё / дней
      */
-    static _updateDaysWidget(income, totalFact, totalPlannedRest) {
-        const widget = document.getElementById('days-widget');
-        const text = document.getElementById('days-widget-text');
-        if (!widget || !text) return;
+    static _updateTopCards(income, totalFact, totalPlan, totalPlannedRest, freeFunds) {
+        const setText = (id, text) => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = text;
+        };
 
+        // ─── Карточка «% исполнения бюджета» ───
+        const execPct = totalPlan > 0 ? (totalFact / totalPlan * 100) : 0;
+        setText('exec-percentage', `${execPct.toFixed(2)}%`);
+
+        // Жёлтый/красный для перевыполнения
+        const execCard = document.getElementById('exec-card');
+        if (execCard) {
+            execCard.classList.toggle('is-overspent', execPct > 100);
+        }
+
+        // ─── Считаем дни ───
         const period = window.BudgetApp?.currentPeriod;
-        if (!period || !period.periodEnd) {
-            widget.style.display = 'none';
+        const daysCard = document.getElementById('days-card');
+        const planPerDayCard = document.getElementById('plan-perday-card');
+
+        if (!period || !period.periodEnd || !period.periodStart) {
+            setText('days-card-days', '—');
+            setText('days-card-free', '0.00 €');
+            setText('days-card-perday', '0.00 €');
+            setText('plan-perday-value', '≈ 0.00 €/день');
+            setText('plan-perday-total', `${totalPlannedRest.toFixed(2)} €`);
             return;
         }
 
         const now = new Date();
-        const end = period.periodEnd;
         const start = period.periodStart;
-
-        // Если период целиком в прошлом или будущем — показываем спокойную инфо-строку
-        if (now < start) {
-            widget.style.display = '';
-            text.innerHTML = `Период ещё не начался: <strong>${DateUtils.formatPeriodFull(period)}</strong>`;
-            return;
-        }
-        if (now > end) {
-            widget.style.display = '';
-            text.innerHTML = `Период завершён: <strong>${DateUtils.formatPeriodFull(period)}</strong>`;
-            return;
-        }
-
-        // Полные сутки до конца периода
+        const end = period.periodEnd;
         const MS_PER_DAY = 24 * 60 * 60 * 1000;
-        const daysLeft = Math.max(1, Math.ceil((end.getTime() - now.getTime()) / MS_PER_DAY));
 
-        const freeFunds = income - totalFact - totalPlannedRest;
-        const perDay = freeFunds / daysLeft;
+        // Дни до конца периода: 1 — если последние сутки, 0 — если уже завершился
+        let daysLeft;
+        let daysLabel;
 
-        widget.style.display = '';
-
-        if (freeFunds < 0) {
-            text.innerHTML = `⚠️ До конца периода <strong>${daysLeft}</strong> дн. ` +
-                `«Свободно» уже отрицательно (${freeFunds.toFixed(2)} €) — план придётся пересмотреть.`;
+        if (now < start) {
+            // Период не начался — показываем «не начался»
+            const daysUntilStart = Math.ceil((start.getTime() - now.getTime()) / MS_PER_DAY);
+            daysLeft = 0;
+            daysLabel = `через ${daysUntilStart} дн.`;
+        } else if (now > end) {
+            // Период закончился
+            daysLeft = 0;
+            daysLabel = 'завершён';
         } else {
-            text.innerHTML = `До конца периода <strong>${daysLeft}</strong> дн. ` +
-                `Свободно на день ≈ <strong>${perDay.toFixed(2)} €</strong> ` +
-                `(всего свободно ${freeFunds.toFixed(2)} €).`;
+            daysLeft = Math.max(1, Math.ceil((end.getTime() - now.getTime()) / MS_PER_DAY));
+            daysLabel = `${daysLeft} дн.`;
+        }
+
+        // ─── Карточка «До конца периода» ───
+        setText('days-card-days', daysLabel);
+        setText('days-card-free', `${freeFunds.toFixed(2)} €`);
+        const freeFundsPerDay = daysLeft > 0 ? freeFunds / daysLeft : 0;
+        setText('days-card-perday', `${freeFundsPerDay.toFixed(2)} €`);
+
+        // Если «Свободно» отрицательное — карточка краснеет
+        if (daysCard) {
+            daysCard.classList.toggle('is-negative', freeFunds < 0);
+        }
+
+        // ─── Карточка «План в день» ───
+        const planPerDay = daysLeft > 0 ? totalPlannedRest / daysLeft : 0;
+        setText('plan-perday-value', `≈ ${planPerDay.toFixed(2)} €/день`);
+        setText('plan-perday-total', `${totalPlannedRest.toFixed(2)} €`);
+
+        // Если запланированных трат нет — приглушим карточку
+        if (planPerDayCard) {
+            planPerDayCard.classList.toggle('is-empty', totalPlannedRest < 0.5);
         }
     }
 
