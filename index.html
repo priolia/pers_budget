@@ -161,41 +161,30 @@
             <div id="budget-tab" class="tab-content active">
                 <h2>Сводка бюджета</h2>
 
-                <!-- Карточки итогов -->
-                <div class="summary-cards">
-                    <div class="card card-neutral">
-                        <div class="card-label">Доход</div>
-                        <div class="card-value" id="summary-income">0.00 €</div>
+                <!-- ▼ ВЕРХНИЕ карточки: дни / % исполнения / план в день ▼ -->
+                <div class="summary-cards summary-cards-top">
+                    <div class="card card-primary" id="days-card">
+                        <div class="card-label">До конца периода</div>
+                        <div class="card-value" id="days-card-days">— дн.</div>
+                        <div class="card-subline">
+                            Свободно: <strong id="days-card-free">0.00 €</strong>
+                        </div>
+                        <div class="card-hint">
+                            В день можно: ≈ <strong id="days-card-perday">0.00 €</strong>
+                        </div>
                     </div>
-                    <div class="card card-neutral">
-                        <div class="card-label">Потрачено</div>
-                        <div class="card-value" id="summary-fact">0.00 €</div>
+                    <div class="card card-warning" id="exec-card">
+                        <div class="card-label">% исполнения бюджета</div>
+                        <div class="card-value" id="exec-percentage">0.00%</div>
+                        <div class="card-hint">Σ факт / Σ план</div>
                     </div>
-                    <div class="card card-warning">
-                        <div class="card-label">Запланировано ещё потратить</div>
-                        <div class="card-value" id="summary-planned-rest">0.00 €</div>
-                        <div class="card-hint">по категориям, где факт &lt; план</div>
+                    <div class="card card-attention" id="plan-perday-card">
+                        <div class="card-label">План в день</div>
+                        <div class="card-value" id="plan-perday-value">≈ 0.00 €/день</div>
+                        <div class="card-hint">
+                            Запланировано ещё: <strong id="plan-perday-total">0.00 €</strong>
+                        </div>
                     </div>
-                    <div class="card card-primary" id="free-funds-card">
-                        <div class="card-label">Свободно</div>
-                        <div class="card-value" id="free-funds">0.00 €</div>
-                        <div class="card-hint">можно тратить без ущерба плану</div>
-                    </div>
-                    <div class="card card-danger" id="overspend-card" style="display:none;">
-                        <div class="card-label">Перерасход</div>
-                        <div class="card-value" id="summary-overspend">0.00 €</div>
-                        <div class="card-hint">сумма превышений по категориям</div>
-                    </div>
-                    <div class="card card-success">
-                        <div class="card-label">Отложено</div>
-                        <div class="card-value" id="saved-euro">0.00 €</div>
-                        <div class="card-hint">«Инвестиции и сбережения»</div>
-                    </div>
-                </div>
-
-                <!-- Виджет «дней до конца периода» -->
-                <div class="days-widget" id="days-widget">
-                    <span id="days-widget-text">—</span>
                 </div>
 
                 <div class="table-container">
@@ -222,6 +211,33 @@
                             </tr>
                         </tfoot>
                     </table>
+                </div>
+
+                <!-- ▼ НИЖНИЕ карточки: доход / потрачено / запланировано / перерасход / отложено ▼ -->
+                <div class="summary-cards summary-cards-bottom">
+                    <div class="card card-neutral">
+                        <div class="card-label">Доход</div>
+                        <div class="card-value" id="summary-income">0.00 €</div>
+                    </div>
+                    <div class="card card-neutral">
+                        <div class="card-label">Потрачено</div>
+                        <div class="card-value" id="summary-fact">0.00 €</div>
+                    </div>
+                    <div class="card card-warning">
+                        <div class="card-label">Запланировано ещё потратить</div>
+                        <div class="card-value" id="summary-planned-rest">0.00 €</div>
+                        <div class="card-hint">по категориям, где факт &lt; план</div>
+                    </div>
+                    <div class="card card-danger" id="overspend-card" style="display:none;">
+                        <div class="card-label">Перерасход</div>
+                        <div class="card-value" id="summary-overspend">0.00 €</div>
+                        <div class="card-hint">сумма превышений по категориям</div>
+                    </div>
+                    <div class="card card-success">
+                        <div class="card-label">Отложено</div>
+                        <div class="card-value" id="saved-euro">0.00 €</div>
+                        <div class="card-hint">«Инвестиции и сбережения»</div>
+                    </div>
                 </div>
 
                 <div class="sections">
