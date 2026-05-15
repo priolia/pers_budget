@@ -66,7 +66,6 @@ export class ExportUtils {
             'Описание',
             'Сумма EUR',
             'Сумма UAH',
-            'Сумма BGN',
             'Валюта'
         ];
 
@@ -81,7 +80,6 @@ export class ExportUtils {
                 expense.description || '',
                 expense.amountEUR || '',
                 expense.amountUAH || '',
-                expense.amountBGN || '',
                 expense.currency || 'EUR'
             ];
         });
@@ -271,7 +269,6 @@ export class ExportUtils {
                     <th>Описание</th>
                     <th>Сумма (EUR)</th>
                     <th>Сумма (UAH)</th>
-                    <th>Сумма (BGN)</th>
                 </tr>
             </thead>
             <tbody>
@@ -284,7 +281,6 @@ export class ExportUtils {
                     <td>${expense.description || '-'}</td>
                     <td>${expense.amountEUR.toFixed(2)} €</td>
                     <td>${expense.amountUAH.toFixed(2)} ₴</td>
-                    <td>${expense.amountBGN.toFixed(2)} лв</td>
                 </tr>
 `;
             });
