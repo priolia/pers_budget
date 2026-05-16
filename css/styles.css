@@ -672,47 +672,53 @@ button:disabled {
     }
 }
 
-/* Настройка ширины столбцов в таблице трат */
-/* Детали операции и Категория - одинаковая ширина */
+/* Настройка ширины столбцов в таблице трат (порядок v2.3+: Описание | Категория | Сумма | Валюта | Σплан | Реф€ | Реф% | Действия | Дата) */
+
+/* Колонки 1 и 2 (Описание + Категория) — широкие, одинаковые */
+#expenses-table th:nth-child(1),
+#expenses-table td:nth-child(1),
 #expenses-table th:nth-child(2),
-#expenses-table td:nth-child(2),
-#expenses-table th:nth-child(3),
-#expenses-table td:nth-child(3) {
+#expenses-table td:nth-child(2) {
     min-width: 200px;
     width: 25%;
 }
 
-/* Уменьшение шрифта для даты и часа */
-#expenses-table td:nth-child(1) input {
-    font-size: 12px;
-}
-
-/* Сумма и Валюта - одинаковая ширина */
+/* Колонки 3-7 (Сумма, Валюта, Сумма план, Бюджет реф €, Бюджет реф %) — узкие, одинаковые */
+#expenses-table th:nth-child(3),
+#expenses-table td:nth-child(3),
 #expenses-table th:nth-child(4),
 #expenses-table td:nth-child(4),
 #expenses-table th:nth-child(5),
-#expenses-table td:nth-child(5) {
-    width: 90px;
-    min-width: 90px;
-    max-width: 90px;
-}
-
-/* Одинаковая ширина для столбцов 6-8 (Сумма план, Бюджет реф) */
+#expenses-table td:nth-child(5),
 #expenses-table th:nth-child(6),
 #expenses-table td:nth-child(6),
 #expenses-table th:nth-child(7),
-#expenses-table td:nth-child(7),
-#expenses-table th:nth-child(8),
-#expenses-table td:nth-child(8) {
+#expenses-table td:nth-child(7) {
     width: 90px;
     min-width: 90px;
     max-width: 90px;
 }
 
-/* Компактные заголовки */
+/* Колонка 9 (Дата и час) — в 2 раза шире узкой, с обрезкой */
+#expenses-table th:nth-child(9),
+#expenses-table td:nth-child(9) {
+    width: 180px;
+    min-width: 180px;
+    max-width: 180px;
+    overflow: hidden;
+}
+
+/* Input даты заполняет ячейку */
+#expenses-table td:nth-child(9) input {
+    width: 100%;
+    box-sizing: border-box;
+    font-size: 12px;
+}
+
+/* Компактные заголовки в узких колонках */
+#expenses-table th:nth-child(5),
 #expenses-table th:nth-child(6),
-#expenses-table th:nth-child(7),
-#expenses-table th:nth-child(8) {
+#expenses-table th:nth-child(7) {
     font-size: 11px;
     line-height: 1.2;
     padding: 6px 8px;
