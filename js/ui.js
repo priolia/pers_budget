@@ -809,7 +809,20 @@ export class UIManager {
         document.getElementById('total-fact-euro').textContent = totalFact.toFixed(2);
         const totalPercentage = totalPlan > 0 ? (totalFact / totalPlan * 100) : 0;
         document.getElementById('total-percentage').textContent = totalPercentage.toFixed(2) + '%';
-        document.getElementById('total-remaining').textContent = totalRemaining.toFixed(2);
+
+        // ─── «Всего» в колонке «Остаток в Плане» ───
+        // Используем totalPlannedRest (сумма ПОЛОЖИТЕЛЬНЫХ остатков), а не totalRemaining (арифметическая сумма
+        // план−факт по всем категориям, где перерасходы вычитаются из остальных остатков и дают обманчивую цифру).
+        // Так итог в таблице совпадает с «Запланировано ещё» в верхних карточках.
+        // Если есть перерасход — показываем его в скобках красным.
+        const totalRemainingEl = document.getElementById('total-remaining');
+        if (totalRemainingEl) {
+            if (totalOverspend >= 0.5) {
+                totalRemainingEl.innerHTML = `${totalPlannedRest.toFixed(2)} <span style="color: #c62828;">(−${totalOverspend.toFixed(2)})</span>`;
+            } else {
+                totalRemainingEl.textContent = totalPlannedRest.toFixed(2);
+            }
+        }
 
         // ─── «Всего» в колонке €/день = то же значение, что в карточке «План в день» наверху ───
         // По договорённости: Σ max(0, план − факт) / дней. То есть totalPlannedRest / daysLeft.
