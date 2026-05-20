@@ -131,11 +131,17 @@ export class UIManager {
         const limitCryptoInput = document.getElementById('limit-crypto');
 
         if (limitFopInput) {
-            limitFopInput.addEventListener('input', () => this.updateIncomeCalculation());
+            limitFopInput.addEventListener('input', () => {
+                this.updateIncomeCalculation();
+                this.updateAllocationBanner();
+            });
         }
 
         if (limitCryptoInput) {
-            limitCryptoInput.addEventListener('input', () => this.updateIncomeCalculation());
+            limitCryptoInput.addEventListener('input', () => {
+                this.updateIncomeCalculation();
+                this.updateAllocationBanner();
+            });
         }
 
         // Фильтр категорий
@@ -193,11 +199,6 @@ export class UIManager {
         });
 
         // Дополнительные кнопки
-        const resetCategoriesBtn = document.getElementById('reset-categories-btn');
-        if (resetCategoriesBtn) {
-            resetCategoriesBtn.addEventListener('click', () => this.resetCategories());
-        }
-
         const clearExpensesBtn = document.getElementById('clear-expenses-btn');
         if (clearExpensesBtn) {
             clearExpensesBtn.addEventListener('click', () => this.clearExpenses());
@@ -433,6 +434,7 @@ export class UIManager {
             </td>`;
             tbody.appendChild(tr);
             this.updateTaxCalculation();
+            this.updateAllocationBanner();
             return;
         }
 
@@ -511,6 +513,9 @@ export class UIManager {
 
         // Обновить расчет налогов
         this.updateTaxCalculation();
+
+        // Обновить баннер «Распределено в категориях»
+        this.updateAllocationBanner();
     }
 
     /**
@@ -608,6 +613,91 @@ export class UIManager {
         if (taxQuarterEl) {
             taxQuarterEl.textContent = taxAmountQuarterUAH.toFixed(2);
         }
+    }
+
+    /**
+     * Обновление баннера «Распределено в категориях»
+     *
+     * Считает суммарную долю дохода, распределённую по лимитам категорий.
+     * Доход = limit-fop + limit-crypto (как сейчас в коде).
+     * Сумма распределённого = Σ category.limit по всем категориям.
+     *
+     * Состояния баннера:
+     *   ≤ 95%   → зелёный, «свободно X €»
+     *   95–100% → жёлтый,  «свободно X €» (впритык)
+     *   > 100%  → красный, «перебор X €»
+     *   доход 0 / категорий нет → нейтральный (серый)
+     */
+    static updateAllocationBanner() {
+        const banner = document.getElementById('allocation-banner');
+        const textEl = document.getElementById('allocation-banner-text');
+        if (!banner || !textEl) return;
+
+        // Сначала чистим все цветовые классы — будем выставлять заново
+        banner.classList.remove(
+            'allocation-ok',
+            'allocation-warning',
+            'allocation-danger',
+            'allocation-neutral'
+        );
+
+        // Доход — пробуем взять из полей формы (актуальное значение прямо сейчас),
+        // если их нет — фоллбэк на сохранённый config
+        const limitFopInput = document.getElementById('limit-fop');
+        const limitCryptoInput = document.getElementById('limit-crypto');
+        const config = DataManager.getConfig();
+        const settings = config.settings || config;
+
+        const limitFop = limitFopInput
+            ? (parseFloat(limitFopInput.value) || 0)
+            : (settings.limitFop || 0);
+        const limitCrypto = limitCryptoInput
+            ? (parseFloat(limitCryptoInput.value) || 0)
+            : (settings.limitCrypto || 0);
+        const incomeEuro = limitFop + limitCrypto;
+
+        // Сумма лимитов по всем категориям
+        const categories = DataManager.getCategories();
+        const totalLimit = categories.reduce(
+            (sum, cat) => sum + (parseFloat(cat.limit) || 0),
+            0
+        );
+
+        // Граничные случаи: нет дохода или нет категорий
+        if (incomeEuro <= 0) {
+            banner.classList.add('allocation-neutral');
+            textEl.textContent = 'Доход не задан — укажите лимит ФОП и крипто в Настройках';
+            return;
+        }
+        if (categories.length === 0) {
+            banner.classList.add('allocation-neutral');
+            textEl.textContent = 'Категорий пока нет — добавьте хотя бы одну';
+            return;
+        }
+
+        // Основной расчёт
+        const percent = (totalLimit / incomeEuro) * 100;
+        const remainingEuro = incomeEuro - totalLimit; // может быть отрицательным
+        const remainingPct = 100 - percent;            // может быть отрицательным
+
+        let stateClass;
+        let tail; // вторая часть строки после процента
+
+        if (percent > 100) {
+            stateClass = 'allocation-danger';
+            const overspendEuro = Math.abs(remainingEuro).toFixed(2);
+            const overspendPct = Math.abs(remainingPct).toFixed(2);
+            tail = `перебор ${overspendEuro} € (−${overspendPct}%)`;
+        } else if (percent >= 95) {
+            stateClass = 'allocation-warning';
+            tail = `свободно ${remainingEuro.toFixed(2)} € (${remainingPct.toFixed(2)}%)`;
+        } else {
+            stateClass = 'allocation-ok';
+            tail = `свободно ${remainingEuro.toFixed(2)} € (${remainingPct.toFixed(2)}%)`;
+        }
+
+        banner.classList.add(stateClass);
+        textEl.textContent = `${percent.toFixed(2)}% — ${tail}`;
     }
 
 
@@ -2050,41 +2140,6 @@ export class UIManager {
             }
 
             console.log('👋 Выход из приложения');
-        }
-    }
-
-    /**
-     * Сброс категорий к дефолтным значениям
-     */
-    static async resetCategories() {
-        if (!confirm('Вы уверены, что хотите сбросить все категории к дефолтным значениям? Это действие необратимо!')) {
-            return;
-        }
-
-        try {
-            // Получить дефолтные категории из CONFIG
-            const defaultCategories = window.BudgetApp.CONFIG.DEFAULT_CATEGORIES || [];
-
-            if (defaultCategories.length === 0) {
-                alert('Дефолтные категории не найдены');
-                return;
-            }
-
-            // Установить дефолтные категории
-            DataManager.setCategories(defaultCategories);
-
-            await window.BudgetApp.saveData();
-
-            // Обновить UI
-            this.renderReferenceTable();
-            this.renderBudgetSummary();
-            this.updateCategoryFilter();
-
-            alert('Категории сброшены к дефолтным значениям');
-            console.log('✅ Категории сброшены');
-        } catch (error) {
-            console.error('❌ Ошибка сброса категорий:', error);
-            alert('Ошибка сброса категорий');
         }
     }
 
