@@ -428,7 +428,7 @@ export class UIManager {
 
         if (sortedCategories.length === 0) {
             const tr = document.createElement('tr');
-            tr.innerHTML = `<td colspan="10" class="empty-state">
+            tr.innerHTML = `<td colspan="11" class="empty-state">
                 <span class="empty-state-icon">📂</span>
                 Категорий пока нет — нажмите «Добавить категорию», чтобы начать.
             </td>`;
@@ -495,6 +495,12 @@ export class UIManager {
                     <input type="number" step="0.01" min="0" max="100" class="category-percentage"
                            value="${category.percentage || 0}" data-original="${category.percentage || 0}"
                            onchange="window.BudgetApp.UIManager.onPercentageChange(this)">
+                </td>
+                <td class="col-daily-limit">
+                    <input type="checkbox" class="daily-limit-checkbox"
+                           ${category.includeInDailyLimit ? 'checked' : ''}
+                           data-original="${category.includeInDailyLimit ? '1' : '0'}"
+                           title="Учитывать в карточке «Дневной лимит»">
                 </td>
                 <td>${amountUAH.toFixed(2)}</td>
                 <td>${spent.toFixed(2)}</td>
@@ -832,6 +838,7 @@ export class UIManager {
         let totalRemaining = 0;     // план − факт по каждой категории, суммарно (может быть отрицательным)
         let totalPlannedRest = 0;   // Σ max(0, план − факт)   — сколько ещё нужно потратить по плану
         let totalOverspend = 0;     // Σ max(0, факт − план)   — перерасход
+        let dailyLimitRest = 0;     // Σ max(0, план − факт) — но только по категориям с includeInDailyLimit=true
 
         // Сортируем категории по порядку
         const sortedCategories = [...categories].sort((a, b) => (a.order || 0) - (b.order || 0));
@@ -882,6 +889,9 @@ export class UIManager {
             totalRemaining += remaining;
             totalPlannedRest += Math.max(0, plan - fact);
             totalOverspend += Math.max(0, fact - plan);
+            if (category.includeInDailyLimit) {
+                dailyLimitRest += Math.max(0, plan - fact);
+            }
         });
 
         // Пустое состояние, если категорий нет
@@ -958,7 +968,7 @@ export class UIManager {
         setText('saved-euro', `${savedEuro.toFixed(2)} €`);
 
         // ─── ВЕРХ: дни / % исполнения / план в день ───
-        this._updateTopCards(incomeEuro, totalFact, totalPlan, totalPlannedRest, freeFunds);
+        this._updateTopCards(incomeEuro, totalFact, totalPlan, totalPlannedRest, freeFunds, dailyLimitRest);
 
         // Обновить график
         this.updateChart(categories, categoryTotals);
@@ -968,9 +978,11 @@ export class UIManager {
      * Верхний блок из трёх главных карточек:
      *   1) «До конца периода» — дни, всего свободно, на день
      *   2) «% исполнения бюджета» — Σ факт / Σ план
-     *   3) «План в день» — Запланировано ещё / дней
+     *   3) «Дневной лимит» — Σ остатков по ОТМЕЧЕННЫМ категориям / дней
+     *
+     * @param {number} dailyLimitRest — Σ max(0, план − факт) только по категориям с includeInDailyLimit=true
      */
-    static _updateTopCards(income, totalFact, totalPlan, totalPlannedRest, freeFunds) {
+    static _updateTopCards(income, totalFact, totalPlan, totalPlannedRest, freeFunds, dailyLimitRest = 0) {
         const setText = (id, text) => {
             const el = document.getElementById(id);
             if (el) el.textContent = text;
@@ -996,7 +1008,7 @@ export class UIManager {
             setText('days-card-free', '0.00 €');
             setText('days-card-perday', '0.00 €');
             setText('plan-perday-value', '≈ 0.00 €/день');
-            setText('plan-perday-total', `${totalPlannedRest.toFixed(2)} €`);
+            setText('plan-perday-total', `${dailyLimitRest.toFixed(2)} €`);
             return;
         }
 
@@ -1034,14 +1046,14 @@ export class UIManager {
             daysCard.classList.toggle('is-negative', freeFunds < 0);
         }
 
-        // ─── Карточка «План в день» ───
-        const planPerDay = daysLeft > 0 ? totalPlannedRest / daysLeft : 0;
+        // ─── Карточка «Дневной лимит» (только по отмеченным категориям) ───
+        const planPerDay = daysLeft > 0 ? dailyLimitRest / daysLeft : 0;
         setText('plan-perday-value', `≈ ${planPerDay.toFixed(2)} €/день`);
-        setText('plan-perday-total', `${totalPlannedRest.toFixed(2)} €`);
+        setText('plan-perday-total', `${dailyLimitRest.toFixed(2)} €`);
 
-        // Если запланированных трат нет — приглушим карточку
+        // Если по выбранным категориям ничего не запланировано — приглушим карточку
         if (planPerDayCard) {
-            planPerDayCard.classList.toggle('is-empty', totalPlannedRest < 0.5);
+            planPerDayCard.classList.toggle('is-empty', dailyLimitRest < 0.5);
         }
     }
 
@@ -1364,6 +1376,8 @@ export class UIManager {
         const percentage = parseFloat(row.querySelector('.category-percentage').value) || 0;
         const iconEl = row.querySelector('.category-icon');
         const icon = iconEl ? iconEl.value.trim() : '';
+        const dailyEl = row.querySelector('.daily-limit-checkbox');
+        const includeInDailyLimit = dailyEl ? dailyEl.checked : false;
         // order больше не редактируется через эту кнопку — он управляется стрелками ↑↓
 
         if (!name) {
@@ -1384,7 +1398,8 @@ export class UIManager {
                 name,
                 limit,
                 percentage,
-                icon
+                icon,
+                includeInDailyLimit
             });
 
             await window.BudgetApp.saveData();
