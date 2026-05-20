@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Персональное бюджетирование v2.1 (upd 15.05.2026)</title>
+    <title>Персональное бюджетирование v2.1 (upd 20.05.2026)</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%234CAF50' width='100' height='100' rx='15'/><text x='50' y='75' font-size='70' text-anchor='middle' fill='white' font-family='Arial'>€</text></svg>">
     <link rel="stylesheet" href="css/styles.css">
 </head>
@@ -34,7 +34,7 @@
                 <span class="settings-link" data-action="logout">Выход</span>
             </div>
 
-            <h1>Персональное бюджетирование v2.1 (upd 15.05.2026)</h1>
+            <h1>Персональное бюджетирование v2.1 (upd 20.05.2026)</h1>
 
             <!-- Информация о курсах валют -->
             <div class="exchange-info">
@@ -72,7 +72,13 @@
 
                 <div class="form-group">
                     <button id="add-category-btn">Добавить категорию</button>
-                    <button class="button-secondary" id="reset-categories-btn">Сбросить к дефолтным</button>
+                </div>
+
+                <!-- Баннер: распределение дохода по категориям -->
+                <div id="allocation-banner" class="allocation-banner allocation-ok">
+                    <span class="allocation-icon">💰</span>
+                    <span class="allocation-label">Распределено в категориях:</span>
+                    <span class="allocation-value" id="allocation-banner-text">—</span>
                 </div>
 
                 <div class="table-container">
