@@ -61,6 +61,7 @@ class DataManagerClass {
             percentage: categoryData.percentage || 0,
             order: categoryData.order || this.categories.length + 1,
             icon: categoryData.icon || '',
+            includeInDailyLimit: categoryData.includeInDailyLimit || false,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString()
         };
