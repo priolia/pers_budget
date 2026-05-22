@@ -301,14 +301,14 @@ window.BudgetApp = {
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('📄 DOM загружен');
 
-    // Проверяем аутентификацию
+    // Проверяем аутентификацию.
+    // Если в sessionStorage есть валидный токен — checkAuth вернёт true и запустим приложение.
+    // Если нет — checkAuth покажет экран логина и нарисует кнопку Google;
+    // дальнейший запуск приложения произойдёт из handleGoogleResponse после успешного входа.
     const isAuth = await AuthManager.checkAuth();
 
     if (isAuth) {
-        // Если пароля нет - сразу запускаем приложение
         await window.BudgetApp.init();
-
-        // Показываем статистику в консоли
         window.BudgetApp.showInfo();
     }
 });
