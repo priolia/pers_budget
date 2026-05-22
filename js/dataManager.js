@@ -62,6 +62,7 @@ class DataManagerClass {
             order: categoryData.order || this.categories.length + 1,
             icon: categoryData.icon || '',
             includeInDailyLimit: categoryData.includeInDailyLimit || false,
+            isReserveSource: categoryData.isReserveSource || false,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString()
         };
@@ -159,6 +160,7 @@ class DataManagerClass {
             currency: expenseData.currency || 'EUR',
             amountEUR: expenseData.amountEUR || expenseData.amount || 0,
             amountUAH: expenseData.amountUAH || 0,
+            paidFrom: expenseData.paidFrom || 'monthly',
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString()
         };
@@ -212,6 +214,8 @@ class DataManagerClass {
             ...exp,
             // Генерируем ID если его нет (миграция старых данных)
             id: exp.id || this.generateId(CONFIG.ID_FORMATS.EXPENSE),
+            // Обратная совместимость: старые расходы без paidFrom считаются как 'monthly'
+            paidFrom: exp.paidFrom || 'monthly',
             createdAt: exp.createdAt || new Date().toISOString(),
             updatedAt: exp.updatedAt || new Date().toISOString()
         }));
@@ -226,6 +230,10 @@ class DataManagerClass {
         return {
             passwordHash: null,
             periodStartDay: CONFIG.DEFAULTS.PERIOD_START_DAY,
+            reserves: [
+                { id: 'reserve_eur', name: 'Запас EUR', icon: '💶', currency: 'EUR', balance: 0 },
+                { id: 'reserve_uah', name: 'Запас UAH', icon: '🇺🇦', currency: 'UAH', balance: 0 }
+            ],
             settings: {
                 rateEURtoUAH: CONFIG.DEFAULTS.RATE_EUR_TO_UAH,
                 taxRate: CONFIG.DEFAULTS.TAX_RATE,
@@ -280,7 +288,55 @@ class DataManagerClass {
             ...this.getDefaultConfig(),
             ...config
         };
+        // Миграция: если reserves отсутствуют — создаём дефолтные две копилки (EUR + UAH)
+        if (!Array.isArray(this.config.reserves) || this.config.reserves.length === 0) {
+            this.config.reserves = [
+                { id: 'reserve_eur', name: 'Запас EUR', icon: '💶', currency: 'EUR', balance: 0 },
+                { id: 'reserve_uah', name: 'Запас UAH', icon: '🇺🇦', currency: 'UAH', balance: 0 }
+            ];
+        }
         this.notifyListeners('configChange');
+    }
+
+    // ============================================
+    // РАБОТА С КОПИЛКАМИ (RESERVES)
+    // ============================================
+
+    /**
+     * Получить все копилки
+     */
+    getReserves() {
+        return [...(this.config.reserves || [])];
+    }
+
+    /**
+     * Найти копилку по ID
+     */
+    getReserveById(id) {
+        return (this.config.reserves || []).find(r => r.id === id);
+    }
+
+    /**
+     * Найти копилку по валюте (первая встреченная)
+     */
+    getReserveByCurrency(currency) {
+        return (this.config.reserves || []).find(r => r.currency === currency);
+    }
+
+    /**
+     * Установить баланс конкретной копилки
+     */
+    setReserveBalance(id, balance) {
+        const reserves = this.config.reserves || [];
+        const idx = reserves.findIndex(r => r.id === id);
+        if (idx === -1) {
+            console.error(`Копилка с ID ${id} не найдена`);
+            return null;
+        }
+        reserves[idx] = { ...reserves[idx], balance: parseFloat(balance) || 0 };
+        this.config.reserves = reserves;
+        this.notifyListeners('configChange');
+        return reserves[idx];
     }
 
     // ============================================
