@@ -4,6 +4,7 @@
  */
 
 import { CONFIG } from './config.js';
+import { AuthManager } from './auth.js';
 
 class BudgetAPIClass {
     constructor() {
@@ -24,9 +25,10 @@ class BudgetAPIClass {
     async request(endpoint, options = {}) {
         const url = `${CONFIG.API.BASE_URL}${endpoint}`;
 
+        const token = AuthManager.getToken();
         const headers = {
             'Content-Type': 'application/json',
-            'X-API-Key': CONFIG.API.KEY,
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
             ...options.headers
         };
 
@@ -41,6 +43,16 @@ class BudgetAPIClass {
             });
 
             clearTimeout(timeoutId);
+
+            // Токен невалиден или нет доступа — выходим
+            if (response.status === 401 || response.status === 403) {
+                console.warn('🔒 Токен невалиден или нет доступа, выход');
+                AuthManager.clearToken();
+                AuthManager.isAuthenticated = false;
+                // Перезагружаем страницу — пользователь увидит экран входа
+                window.location.reload();
+                throw new Error(`Не авторизован (${response.status})`);
+            }
 
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
