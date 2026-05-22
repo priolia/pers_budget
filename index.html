@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Персональное бюджетирование v2.1 (upd 20.05.2026)</title>
+    <title>Персональное бюджетирование v2.1 (upd 22.05.2026)</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%234CAF50' width='100' height='100' rx='15'/><text x='50' y='75' font-size='70' text-anchor='middle' fill='white' font-family='Arial'>€</text></svg>">
     <link rel="stylesheet" href="css/styles.css">
 </head>
@@ -34,7 +34,7 @@
                 <span class="settings-link" data-action="logout">Выход</span>
             </div>
 
-            <h1>Персональное бюджетирование v2.1 (upd 20.05.2026)</h1>
+            <h1>Персональное бюджетирование v2.1 (upd 22.05.2026)</h1>
 
             <!-- Информация о курсах валют -->
             <div class="exchange-info">
@@ -91,6 +91,7 @@
                                 <th>Лимит (€)</th>
                                 <th>% от бюджета</th>
                                 <th style="width: 80px;" title="Учитывать категорию в карточке «Дневной лимит»">Дневной лимит</th>
+                                <th style="width: 80px;" title="Если включено — расход в этой категории автоматически пополняет копилку (по валюте расхода). Используется для «Инвестиции и сбережения».">Пополняет запас</th>
                                 <th>Сумма (грн)</th>
                                 <th>Потрачено (€)</th>
                                 <th>Остаток (€)</th>
@@ -102,6 +103,29 @@
                             <!-- Данные будут добавлены JavaScript -->
                         </tbody>
                     </table>
+                </div>
+
+                <div class="section" style="margin-top: 30px;">
+                    <h3>💰 Копилки (запас)</h3>
+                    <p style="color:#666;font-size:0.9em;margin-bottom:10px;">
+                        Запас лежит «за пределами» месячного бюджета. Когда платишь из запаса
+                        (например, мамина операция) — указываешь источник «Запас EUR» в строке расхода.
+                        Расход попадает в свою категорию, но не давит на месячный бюджет.
+                    </p>
+                    <div class="table-container">
+                        <table id="reserves-table">
+                            <thead>
+                                <tr>
+                                    <th>Копилка</th>
+                                    <th style="width: 220px;">Текущий баланс</th>
+                                    <th style="width: 100px;">Действия</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Заполняется JS -->
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
 
                 <div class="section" style="margin-top: 30px;">
@@ -151,6 +175,7 @@
                                 <th>Категория</th>
                                 <th>Сумма</th>
                                 <th>Валюта</th>
+                                <th title="Откуда финансируется расход: месячный доход или копилка">Источник</th>
                                 <th>Сумма<br>план (€)</th>
                                 <th>Бюджет<br>реф €</th>
                                 <th>Бюджет<br>реф %</th>
@@ -232,6 +257,7 @@
                     <div class="card card-neutral">
                         <div class="card-label">Потрачено</div>
                         <div class="card-value" id="summary-fact">0.00 €</div>
+                        <div class="card-hint">из месячного дохода</div>
                     </div>
                     <div class="card card-warning">
                         <div class="card-label">Запланировано ещё потратить</div>
@@ -241,13 +267,33 @@
                     <div class="card card-danger" id="overspend-card" style="display:none;">
                         <div class="card-label">Перерасход</div>
                         <div class="card-value" id="summary-overspend">0.00 €</div>
-                        <div class="card-hint">сумма превышений по категориям</div>
+                        <div class="card-hint">сумма превышений по категориям (только monthly)</div>
+                    </div>
+                    <div class="card" id="covered-from-reserve-card" style="display:none;background:#e3f2fd;border-color:#90caf9;">
+                        <div class="card-label">Покрыто из запаса</div>
+                        <div class="card-value" id="covered-from-reserve-value" style="color:#1565c0;">0.00 €</div>
+                        <div class="card-hint">эти расходы не давят на месячный бюджет</div>
                     </div>
                     <div class="card card-success">
                         <div class="card-label">Отложено</div>
                         <div class="card-value" id="saved-euro">0.00 €</div>
                         <div class="card-hint">«Инвестиции и сбережения»</div>
                     </div>
+                </div>
+
+                <!-- ▼ Виджет «Копилки» ▼ -->
+                <div class="section" id="reserves-widget" style="margin-top: 20px;">
+                    <h3>💰 Копилки</h3>
+                    <div class="table-container">
+                        <table style="max-width:500px;">
+                            <tbody id="reserves-widget-body">
+                                <!-- Заполняется JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <p style="color:#666;font-size:0.85em;margin-top:8px;">
+                        Текущий баланс копилок. Изменить вручную можно в «Справочник → 💰 Копилки».
+                    </p>
                 </div>
 
                 <div class="sections">
