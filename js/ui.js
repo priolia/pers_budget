@@ -428,7 +428,7 @@ export class UIManager {
 
         if (sortedCategories.length === 0) {
             const tr = document.createElement('tr');
-            tr.innerHTML = `<td colspan="11" class="empty-state">
+            tr.innerHTML = `<td colspan="12" class="empty-state">
                 <span class="empty-state-icon">📂</span>
                 Категорий пока нет — нажмите «Добавить категорию», чтобы начать.
             </td>`;
@@ -502,6 +502,12 @@ export class UIManager {
                            data-original="${category.includeInDailyLimit ? '1' : '0'}"
                            title="Учитывать в карточке «Дневной лимит»">
                 </td>
+                <td class="col-reserve-source">
+                    <input type="checkbox" class="reserve-source-checkbox"
+                           ${category.isReserveSource ? 'checked' : ''}
+                           data-original="${category.isReserveSource ? '1' : '0'}"
+                           title="При расходе в этой категории сумма автоматически пополняет копилку (по валюте расхода)">
+                </td>
                 <td>${amountUAH.toFixed(2)}</td>
                 <td>${spent.toFixed(2)}</td>
                 <td>${remaining.toFixed(2)}</td>
@@ -522,6 +528,76 @@ export class UIManager {
 
         // Обновить баннер «Распределено в категориях»
         this.updateAllocationBanner();
+
+        // Обновить таблицу копилок
+        this.renderReservesTable();
+    }
+
+    /**
+     * Рендеринг таблицы копилок в Справочнике.
+     * Каждая копилка — строка с возможностью редактировать баланс.
+     */
+    static renderReservesTable() {
+        const tbody = document.querySelector('#reserves-table tbody');
+        if (!tbody) return;
+
+        tbody.innerHTML = '';
+        const reserves = DataManager.getReserves();
+
+        if (!reserves.length) {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td colspan="3" class="empty-state">
+                <span class="empty-state-icon">💰</span>
+                Копилок пока нет.
+            </td>`;
+            tbody.appendChild(tr);
+            return;
+        }
+
+        reserves.forEach(r => {
+            const tr = document.createElement('tr');
+            tr.dataset.reserveId = r.id;
+            const sign = r.currency === 'UAH' ? 'грн' : '€';
+            const icon = r.icon || '💰';
+            tr.innerHTML = `
+                <td>${icon} <strong>${r.name}</strong></td>
+                <td>
+                    <input type="number" step="0.01" class="reserve-balance-input"
+                           value="${(r.balance || 0).toFixed(2)}" style="text-align:right;width:140px;">
+                    ${sign}
+                </td>
+                <td>
+                    <button class="button-secondary"
+                            onclick="window.BudgetApp.UIManager.saveReserveBalance('${r.id}')"
+                            title="Сохранить новый баланс">💾</button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    /**
+     * Сохранить новый баланс копилки из формы.
+     */
+    static async saveReserveBalance(reserveId) {
+        const tr = document.querySelector(`#reserves-table tr[data-reserve-id="${reserveId}"]`);
+        if (!tr) return;
+        const input = tr.querySelector('.reserve-balance-input');
+        const newBalance = parseFloat(input.value);
+        if (isNaN(newBalance)) {
+            alert('Введите корректное число');
+            return;
+        }
+        try {
+            DataManager.setReserveBalance(reserveId, newBalance);
+            await window.BudgetApp.saveData();
+            this.renderReservesTable();
+            this.renderBudgetSummary();
+            console.log('✅ Баланс копилки сохранён');
+        } catch (e) {
+            console.error('❌ Ошибка сохранения баланса:', e);
+            alert('Ошибка сохранения баланса');
+        }
     }
 
     /**
@@ -750,6 +826,19 @@ export class UIManager {
             const date = new Date(expense.date);
             const dateValue = date.toISOString().slice(0, 16);
 
+            // Опции для выпадающего списка «Источник»
+            const reserves = DataManager.getReserves();
+            const currentSource = expense.paidFrom || 'monthly';
+            const sourceOptionsHtml = `
+                <option value="monthly"${currentSource === 'monthly' ? ' selected' : ''}>💰 Месячный доход</option>
+                ${reserves.map(r => {
+                    const balanceTxt = r.currency === 'UAH'
+                        ? `${(r.balance || 0).toFixed(2)} грн`
+                        : `${(r.balance || 0).toFixed(2)} €`;
+                    return `<option value="${r.id}"${currentSource === r.id ? ' selected' : ''}>${r.icon || '💰'} ${r.name} (${balanceTxt})</option>`;
+                }).join('')}
+            `;
+
             const row = document.createElement('tr');
             row.className = 'expense-row';
             row.dataset.expenseId = expense.id;
@@ -768,6 +857,11 @@ export class UIManager {
                     <select class="currency-select">
                         <option value="EUR" ${expense.currency === 'EUR' ? 'selected' : ''}>€</option>
                         <option value="UAH" ${expense.currency === 'UAH' ? 'selected' : ''}>UAH</option>
+                    </select>
+                </td>
+                <td>
+                    <select class="source-select" title="Откуда финансируется этот расход">
+                        ${sourceOptionsHtml}
                     </select>
                 </td>
                 <td class="readonly-field">${remaining.toFixed(2)}</td>
@@ -812,13 +906,39 @@ export class UIManager {
         // Фильтруем траты по текущему периоду
         const periodExpenses = DateUtils.filterExpensesByPeriod(expenses, window.BudgetApp.currentPeriod);
 
-        // Суммируем траты по категориям
-        const categoryTotals = {};
+        // Суммируем траты по категориям РАЗДЕЛЬНО:
+        //   categoryTotalsMonthly   — только из месячного дохода (source='monthly' или нет)
+        //   categoryTotalsFromReserve — только из копилок (source начинается с 'reserve_')
+        const categoryTotalsMonthly = {};
+        const categoryTotalsFromReserve = {};
+        // Также копим суммы покрытий из запасов по валютам — для мини-карточки и виджета
+        let coveredFromReserveEUR = 0;
+        let coveredFromReserveUAH = 0;
+
         periodExpenses.forEach(expense => {
-            if (!categoryTotals[expense.categoryId]) {
-                categoryTotals[expense.categoryId] = 0;
+            const src = expense.paidFrom || 'monthly';
+            const eur = parseFloat(expense.amountEUR || 0);
+            const uah = parseFloat(expense.amountUAH || 0);
+            if (src === 'monthly') {
+                categoryTotalsMonthly[expense.categoryId] = (categoryTotalsMonthly[expense.categoryId] || 0) + eur;
+            } else {
+                categoryTotalsFromReserve[expense.categoryId] = (categoryTotalsFromReserve[expense.categoryId] || 0) + eur;
+                if (src === 'reserve_eur') {
+                    coveredFromReserveEUR += eur;
+                } else if (src === 'reserve_uah') {
+                    coveredFromReserveUAH += uah;
+                }
             }
-            categoryTotals[expense.categoryId] += parseFloat(expense.amountEUR || 0);
+        });
+
+        // Совместимость с остальным кодом: суммарный объект «факт по категории всего»
+        const categoryTotals = {};
+        const allCatIds = new Set([
+            ...Object.keys(categoryTotalsMonthly),
+            ...Object.keys(categoryTotalsFromReserve)
+        ]);
+        allCatIds.forEach(cid => {
+            categoryTotals[cid] = (categoryTotalsMonthly[cid] || 0) + (categoryTotalsFromReserve[cid] || 0);
         });
 
         // ─── Вычислить дни до конца периода (используется и в колонке €/день, и в верхних карточках) ───
@@ -834,24 +954,27 @@ export class UIManager {
         }
 
         let totalPlan = 0;
-        let totalFact = 0;
+        let totalFact = 0;          // итог по «всего» (для %% и таблицы)
+        let totalFactMonthly = 0;   // итог только monthly — для карточек «Потрачено» / «Перерасход»
         let totalRemaining = 0;     // план − факт по каждой категории, суммарно (может быть отрицательным)
-        let totalPlannedRest = 0;   // Σ max(0, план − факт)   — сколько ещё нужно потратить по плану
-        let totalOverspend = 0;     // Σ max(0, факт − план)   — перерасход
-        let dailyLimitRest = 0;     // Σ max(0, план − факт) — но только по категориям с includeInDailyLimit=true
+        let totalPlannedRest = 0;   // Σ max(0, план − факт по monthly) — сколько ещё можно потратить из месячного
+        let totalOverspend = 0;     // Σ max(0, факт по monthly − план) — перерасход ИЗ МЕСЯЧНОГО (запас не учитываем)
+        let dailyLimitRest = 0;     // Σ max(0, план − факт_monthly) — но только по категориям с includeInDailyLimit=true
 
         // Сортируем категории по порядку
         const sortedCategories = [...categories].sort((a, b) => (a.order || 0) - (b.order || 0));
 
         sortedCategories.forEach(category => {
             const plan = category.limit;
-            const fact = categoryTotals[category.id] || 0;
+            const factMonthly = categoryTotalsMonthly[category.id] || 0;
+            const factReserve = categoryTotalsFromReserve[category.id] || 0;
+            const fact = factMonthly + factReserve;
             const percentage = plan > 0 ? (fact / plan * 100) : 0;
             const remaining = plan - fact;
 
             const row = document.createElement('tr');
 
-            // Цветовая индикация
+            // Цветовая индикация — по ОБЩЕМУ факту (включая запас), как ты просила
             let colorClass = '';
             if (percentage < 50) {
                 colorClass = 'budget-under-50';
@@ -873,10 +996,19 @@ export class UIManager {
                 perDayCell = (remaining / daysLeft).toFixed(2);
             }
 
+            // Ячейка «Факт»: если есть оплаты из запаса — формат «monthly / всего»,
+            // иначе обычное число.
+            let factCellHtml;
+            if (factReserve > 0.005) {
+                factCellHtml = `${factMonthly.toFixed(2)} / <strong>${fact.toFixed(2)}</strong> <span style="color:#1565c0;" title="Из запаса: ${factReserve.toFixed(2)} €">(+${factReserve.toFixed(2)})</span>`;
+            } else {
+                factCellHtml = fact.toFixed(2);
+            }
+
             row.innerHTML = `
                 <td>${UIManager.formatCategoryName(category)}</td>
                 <td>${plan.toFixed(2)}</td>
-                <td>${fact.toFixed(2)}</td>
+                <td>${factCellHtml}</td>
                 <td>${percentage.toFixed(2)}%</td>
                 <td>${remaining.toFixed(2)}</td>
                 <td>${perDayCell}</td>
@@ -886,11 +1018,15 @@ export class UIManager {
 
             totalPlan += plan;
             totalFact += fact;
+            totalFactMonthly += factMonthly;
             totalRemaining += remaining;
-            totalPlannedRest += Math.max(0, plan - fact);
-            totalOverspend += Math.max(0, fact - plan);
+            // План «ещё потратить из месячного» — считаем по факту monthly,
+            // потому что именно он давит на месячный кошелёк.
+            totalPlannedRest += Math.max(0, plan - factMonthly);
+            // Перерасход — только по monthly (запасовые траты не «выжирают бюджет»).
+            totalOverspend += Math.max(0, factMonthly - plan);
             if (category.includeInDailyLimit) {
-                dailyLimitRest += Math.max(0, plan - fact);
+                dailyLimitRest += Math.max(0, plan - factMonthly);
             }
         });
 
@@ -906,7 +1042,16 @@ export class UIManager {
 
         // Обновить итоговую строку таблицы
         document.getElementById('total-plan-euro').textContent = totalPlan.toFixed(2);
-        document.getElementById('total-fact-euro').textContent = totalFact.toFixed(2);
+        // Итог «Факт» в футере — общий (как в таблице по строкам), с пометкой если есть запас
+        const totalFactEl = document.getElementById('total-fact-euro');
+        if (totalFactEl) {
+            if (totalFact - totalFactMonthly > 0.005) {
+                const fromReserve = totalFact - totalFactMonthly;
+                totalFactEl.innerHTML = `${totalFactMonthly.toFixed(2)} / <strong>${totalFact.toFixed(2)}</strong> <span style="color:#1565c0;">(+${fromReserve.toFixed(2)})</span>`;
+            } else {
+                totalFactEl.textContent = totalFact.toFixed(2);
+            }
+        }
         const totalPercentage = totalPlan > 0 ? (totalFact / totalPlan * 100) : 0;
         document.getElementById('total-percentage').textContent = totalPercentage.toFixed(2) + '%';
 
@@ -941,15 +1086,30 @@ export class UIManager {
             const el = document.getElementById(id);
             if (el) el.textContent = text;
         };
+        const setHtml = (id, html) => {
+            const el = document.getElementById(id);
+            if (el) el.innerHTML = html;
+        };
 
         // НИЗ
         setText('summary-income', `${incomeEuro.toFixed(2)} €`);
-        setText('summary-fact', `${totalFact.toFixed(2)} €`);
+        // «Потрачено» — только из месячного дохода (запас НЕ выжирает бюджет).
+        // Если есть оплаты из запаса — показываем подсказку в той же карточке.
+        if (coveredFromReserveEUR > 0.005 || coveredFromReserveUAH > 0.005) {
+            const parts = [];
+            if (coveredFromReserveEUR > 0.005) parts.push(`${coveredFromReserveEUR.toFixed(2)} €`);
+            if (coveredFromReserveUAH > 0.005) parts.push(`${coveredFromReserveUAH.toFixed(2)} грн`);
+            setHtml('summary-fact',
+                `${totalFactMonthly.toFixed(2)} € <span style="color:#1565c0;font-size:0.85em;">(+ ${parts.join(' + ')} из запаса)</span>`
+            );
+        } else {
+            setText('summary-fact', `${totalFactMonthly.toFixed(2)} €`);
+        }
         setText('summary-planned-rest', `${totalPlannedRest.toFixed(2)} €`);
 
-        // «Свободно» = Доход − Факт − (запланировано ещё потратить).
-        // Не выводится отдельной карточкой, но используется в карточке дней наверху.
-        const freeFunds = incomeEuro - totalFact - totalPlannedRest;
+        // «Свободно» = Доход − Факт (только monthly) − (запланировано ещё потратить).
+        // Запас не учитываем — он не из месячного.
+        const freeFunds = incomeEuro - totalFactMonthly - totalPlannedRest;
 
         // ─── Перерасход (НИЗ): только если ≥ 50 копеек ───
         const overspendCard = document.getElementById('overspend-card');
@@ -962,16 +1122,63 @@ export class UIManager {
             }
         }
 
+        // ─── Покрыто из запаса (НИЗ): новая карточка, видна только если есть такие траты ───
+        const coveredCard = document.getElementById('covered-from-reserve-card');
+        if (coveredCard) {
+            if (coveredFromReserveEUR > 0.005 || coveredFromReserveUAH > 0.005) {
+                coveredCard.style.display = '';
+                const lines = [];
+                if (coveredFromReserveEUR > 0.005) lines.push(`${coveredFromReserveEUR.toFixed(2)} €`);
+                if (coveredFromReserveUAH > 0.005) lines.push(`${coveredFromReserveUAH.toFixed(2)} грн`);
+                setHtml('covered-from-reserve-value', lines.join('<br>'));
+            } else {
+                coveredCard.style.display = 'none';
+            }
+        }
+
         // ─── Отложено (НИЗ): категория «Инвестиции и сбережения» ───
         const savingsCategory = categories.find(cat => cat.name === 'Инвестиции и сбережения');
         const savedEuro = savingsCategory ? (categoryTotals[savingsCategory.id] || 0) : 0;
         setText('saved-euro', `${savedEuro.toFixed(2)} €`);
 
+        // ─── Виджет «Копилки» (под нижними карточками) ───
+        this._renderReservesWidget();
+
         // ─── ВЕРХ: дни / % исполнения / план в день ───
-        this._updateTopCards(incomeEuro, totalFact, totalPlan, totalPlannedRest, freeFunds, dailyLimitRest);
+        this._updateTopCards(incomeEuro, totalFactMonthly, totalPlan, totalPlannedRest, freeFunds, dailyLimitRest);
 
         // Обновить график
         this.updateChart(categories, categoryTotals);
+    }
+
+    /**
+     * Рендерит виджет «Копилки» на вкладке Бюджет (под нижними карточками).
+     * Контейнер #reserves-widget с tbody #reserves-widget-body.
+     */
+    static _renderReservesWidget() {
+        const widget = document.getElementById('reserves-widget');
+        const tbody = document.querySelector('#reserves-widget-body');
+        if (!widget || !tbody) return;
+
+        const reserves = DataManager.getReserves();
+        tbody.innerHTML = '';
+        if (!reserves.length) {
+            widget.style.display = 'none';
+            return;
+        }
+        widget.style.display = '';
+
+        reserves.forEach(r => {
+            const tr = document.createElement('tr');
+            const sign = r.currency === 'UAH' ? 'грн' : '€';
+            const icon = r.icon || '💰';
+            const balance = (r.balance || 0).toFixed(2);
+            tr.innerHTML = `
+                <td>${icon} ${r.name}</td>
+                <td style="text-align:right;font-weight:bold;${(r.balance || 0) < 0 ? 'color:#c62828;' : ''}">${balance} ${sign}</td>
+            `;
+            tbody.appendChild(tr);
+        });
     }
 
     /**
@@ -1378,6 +1585,8 @@ export class UIManager {
         const icon = iconEl ? iconEl.value.trim() : '';
         const dailyEl = row.querySelector('.daily-limit-checkbox');
         const includeInDailyLimit = dailyEl ? dailyEl.checked : false;
+        const reserveSourceEl = row.querySelector('.reserve-source-checkbox');
+        const isReserveSource = reserveSourceEl ? reserveSourceEl.checked : false;
         // order больше не редактируется через эту кнопку — он управляется стрелками ↑↓
 
         if (!name) {
@@ -1399,7 +1608,8 @@ export class UIManager {
                 limit,
                 percentage,
                 icon,
-                includeInDailyLimit
+                includeInDailyLimit,
+                isReserveSource
             });
 
             await window.BudgetApp.saveData();
@@ -1419,6 +1629,49 @@ export class UIManager {
     // ============================================
     // ГРУППА 6: ТРАТЫ
     // ============================================
+
+    /**
+     * Применить эффект расхода к балансам копилок.
+     * Возвращает map { reserveId: deltaBalance } (для логирования/отладки).
+     *
+     * Логика:
+     *   1) Если expense.paidFrom === 'reserve_eur' → копилка EUR уменьшается на amountEUR
+     *   2) Если expense.paidFrom === 'reserve_uah' → копилка UAH уменьшается на amountUAH
+     *   3) Если категория расхода имеет isReserveSource=true → копилка с валютой расхода
+     *      УВЕЛИЧИВАЕТСЯ (это «отложить в запас», а не настоящая трата для копилки).
+     *      Учитывается ВНЕ зависимости от source: даже если source='reserve_eur', но категория
+     *      isReserveSource, то это перемещение между копилками — на практике крайне маловероятный
+     *      случай. Безопаснее всё-таки рассмотреть, если возникнет — пока считаем что
+     *      категория с isReserveSource всегда тратится из monthly.
+     *
+     * sign: +1 при добавлении расхода, -1 при удалении/откате.
+     */
+    static _applyExpenseToReserves(expense, sign = +1) {
+        if (!expense) return;
+        const category = DataManager.getCategoryById(expense.categoryId);
+        const amountEUR = parseFloat(expense.amountEUR || 0);
+        const amountUAH = parseFloat(expense.amountUAH || 0);
+
+        // Списание из копилки (когда тратим из запаса)
+        if (expense.paidFrom === 'reserve_eur') {
+            const r = DataManager.getReserveByCurrency('EUR');
+            if (r) DataManager.setReserveBalance(r.id, (r.balance || 0) - sign * amountEUR);
+        } else if (expense.paidFrom === 'reserve_uah') {
+            const r = DataManager.getReserveByCurrency('UAH');
+            if (r) DataManager.setReserveBalance(r.id, (r.balance || 0) - sign * amountUAH);
+        }
+
+        // Пополнение копилки (если категория помечена как «пополняет запас»,
+        // например «Инвестиции и сбережения»). По валюте расхода.
+        if (category && category.isReserveSource) {
+            const currency = expense.currency || 'EUR';
+            const r = DataManager.getReserveByCurrency(currency);
+            if (r) {
+                const delta = (currency === 'UAH') ? amountUAH : amountEUR;
+                DataManager.setReserveBalance(r.id, (r.balance || 0) + sign * delta);
+            }
+        }
+    }
 
     /**
      * Добавление новой траты
@@ -1451,6 +1704,18 @@ export class UIManager {
         const now = new Date();
         const dateValue = now.toISOString().slice(0, 16);
 
+        // Опции источника финансирования: месячный доход + все копилки
+        const reserves = DataManager.getReserves();
+        const sourceOptionsHtml = `
+            <option value="monthly" selected>💰 Месячный доход</option>
+            ${reserves.map(r => {
+                const balanceTxt = r.currency === 'UAH'
+                    ? `${(r.balance || 0).toFixed(2)} грн`
+                    : `${(r.balance || 0).toFixed(2)} €`;
+                return `<option value="${r.id}">${r.icon || '💰'} ${r.name} (${balanceTxt})</option>`;
+            }).join('')}
+        `;
+
         row.innerHTML = `
             <td class="col-description"><input type="text" placeholder="Описание" required></td>
             <td>
@@ -1465,6 +1730,11 @@ export class UIManager {
                 <select class="currency-select">
                     <option value="EUR">€</option>
                     <option value="UAH">UAH</option>
+                </select>
+            </td>
+            <td>
+                <select class="source-select" title="Откуда финансируется этот расход">
+                    ${sourceOptionsHtml}
                 </select>
             </td>
             <td>—</td>
@@ -1496,6 +1766,8 @@ export class UIManager {
         const categoryId = row.querySelector('.category-select').value;
         const amount = parseFloat(row.querySelector('.amount').value);
         const currency = row.querySelector('.currency-select').value;
+        const sourceEl = row.querySelector('.source-select');
+        const source = sourceEl ? sourceEl.value : 'monthly';
 
         // Валидация
         if (!date || !description || !categoryId || !amount || amount <= 0) {
@@ -1518,11 +1790,16 @@ export class UIManager {
             amount,
             currency,
             amountEUR: converted.EUR,
-            amountUAH: converted.UAH
+            amountUAH: converted.UAH,
+            paidFrom: source
         };
 
         try {
-            await this.saveExpense(expenseData);
+            const savedExpense = await this.saveExpense(expenseData);
+
+            // Применить эффект на копилки (списание из запаса или пополнение запаса)
+            this._applyExpenseToReserves(savedExpense, +1);
+            await window.BudgetApp.saveData();
 
             // Удалить временную строку
             row.remove();
@@ -1575,12 +1852,17 @@ export class UIManager {
             return;
         }
 
+        // Старая версия — для отката эффекта на копилки
+        const oldExpense = DataManager.getExpenseById(expenseId);
+
         // Получить данные из полей
         const date = row.querySelector('.expense-date').value;
         const description = row.querySelector('.expense-description').value.trim();
         const categoryId = row.querySelector('.category-select').value;
         const amount = parseFloat(row.querySelector('.expense-amount').value);
         const currency = row.querySelector('.currency-select').value;
+        const sourceEl = row.querySelector('.source-select');
+        const source = sourceEl ? sourceEl.value : 'monthly';
 
         // Валидация
         if (!date || !description || !categoryId || !amount || amount <= 0) {
@@ -1603,11 +1885,20 @@ export class UIManager {
             amount,
             currency,
             amountEUR: converted.EUR,
-            amountUAH: converted.UAH
+            amountUAH: converted.UAH,
+            paidFrom: source
         };
 
         try {
-            DataManager.updateExpense(expenseId, expenseData);
+            // 1) Откатить эффект старой версии на копилки
+            if (oldExpense) {
+                this._applyExpenseToReserves(oldExpense, -1);
+            }
+            // 2) Обновить расход
+            const updated = DataManager.updateExpense(expenseId, expenseData);
+            // 3) Применить эффект новой версии
+            this._applyExpenseToReserves(updated, +1);
+
             await window.BudgetApp.saveData();
 
             // Обновить таблицы
@@ -1654,6 +1945,19 @@ export class UIManager {
         const date = new Date(expense.date);
         const dateValue = date.toISOString().slice(0, 16);
 
+        // Опции для выпадающего списка «Источник»
+        const reserves = DataManager.getReserves();
+        const currentSource = expense.paidFrom || 'monthly';
+        const sourceOptionsHtml = `
+            <option value="monthly"${currentSource === 'monthly' ? ' selected' : ''}>💰 Месячный доход</option>
+            ${reserves.map(r => {
+                const balanceTxt = r.currency === 'UAH'
+                    ? `${(r.balance || 0).toFixed(2)} грн`
+                    : `${(r.balance || 0).toFixed(2)} €`;
+                return `<option value="${r.id}"${currentSource === r.id ? ' selected' : ''}>${r.icon || '💰'} ${r.name} (${balanceTxt})</option>`;
+            }).join('')}
+        `;
+
         // Заменить содержимое строки на редактируемую форму
         targetRow.className = 'expense-row expense-row-unsaved';
         targetRow.innerHTML = `
@@ -1670,6 +1974,11 @@ export class UIManager {
                 <select class="currency-select">
                     <option value="EUR" ${expense.currency === 'EUR' ? 'selected' : ''}>€</option>
                     <option value="UAH" ${expense.currency === 'UAH' ? 'selected' : ''}>UAH</option>
+                </select>
+            </td>
+            <td>
+                <select class="source-select" title="Откуда финансируется этот расход">
+                    ${sourceOptionsHtml}
                 </select>
             </td>
             <td>—</td>
@@ -1694,12 +2003,17 @@ export class UIManager {
     static async updateExpenseFromRow(button, expenseId) {
         const row = button.closest('tr');
 
+        // Старая версия — для отката эффекта на копилки
+        const oldExpense = DataManager.getExpenseById(expenseId);
+
         // Получить данные из полей
         const date = row.querySelector('input[type="datetime-local"]').value;
         const description = row.querySelector('input[type="text"]').value.trim();
         const categoryId = row.querySelector('.category-select').value;
         const amount = parseFloat(row.querySelector('.amount').value);
         const currency = row.querySelector('.currency-select').value;
+        const sourceEl = row.querySelector('.source-select');
+        const source = sourceEl ? sourceEl.value : 'monthly';
 
         // Валидация
         if (!date || !description || !categoryId || !amount || amount <= 0) {
@@ -1722,11 +2036,17 @@ export class UIManager {
             amount,
             currency,
             amountEUR: converted.EUR,
-            amountUAH: converted.UAH
+            amountUAH: converted.UAH,
+            paidFrom: source
         };
 
         try {
-            DataManager.updateExpense(expenseId, expenseData);
+            if (oldExpense) {
+                this._applyExpenseToReserves(oldExpense, -1);
+            }
+            const updated = DataManager.updateExpense(expenseId, expenseData);
+            this._applyExpenseToReserves(updated, +1);
+
             await window.BudgetApp.saveData();
 
             // Обновить таблицы
@@ -1767,6 +2087,9 @@ export class UIManager {
         }
 
         try {
+            // Откатить эффект расхода на копилки ДО удаления (нужны данные расхода)
+            this._applyExpenseToReserves(expense, -1);
+
             DataManager.deleteExpense(expenseId);
             await window.BudgetApp.saveData();
 
