@@ -16,7 +16,6 @@ export const CONFIG = {
     // API настройки
     API: {
         BASE_URL: 'https://priolia-budget.duckdns.org/api',
-        KEY: 'BdgtAPI_7k9mX2pL5nQ8wR4vY6zT3hJ0sF1dG',
         TIMEOUT: 10000, // 10 секунд
         USE_API: true   // false = только localStorage
     },
@@ -26,8 +25,8 @@ export const CONFIG = {
         CATEGORIES: 'budget_categories_v2',
         EXPENSES: 'budget_expenses_v2',
         CONFIG: 'budget_config_v2',
-        PASSWORD: 'budget_password',
-        LAST_SYNC: 'budget_last_sync'
+        LAST_SYNC: 'budget_last_sync',
+        GOOGLE_TOKEN: 'budget_google_token'  // ключ для sessionStorage
     },
 
     // Настройки по умолчанию
