@@ -1,126 +1,200 @@
 /**
- * Модуль аутентификации
+ * Модуль аутентификации через Google OAuth
  */
 
-import { DataManager } from './dataManager.js';
 import { CONFIG } from './config.js';
 
 export class AuthManager {
     static isAuthenticated = false;
+    static googleClientId = null;
 
     /**
-     * Хеширование пароля с помощью SHA-256
+     * Получить сохранённый Google-токен из sessionStorage
      */
-    static async hashPassword(password) {
-        const encoder = new TextEncoder();
-        const data = encoder.encode(password);
-        const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-        const hashArray = Array.from(new Uint8Array(hashBuffer));
-        const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-        return hashHex;
+    static getToken() {
+        return sessionStorage.getItem(CONFIG.STORAGE_KEYS.GOOGLE_TOKEN);
     }
 
     /**
-     * Проверить пароль
+     * Сохранить Google-токен
      */
-    static async verifyPassword(password) {
-        const config = DataManager.getConfig();
-        const storedHash = config.passwordHash;
+    static setToken(token) {
+        sessionStorage.setItem(CONFIG.STORAGE_KEYS.GOOGLE_TOKEN, token);
+    }
 
-        if (!storedHash) {
-            // Пароль не установлен
-            return true;
+    /**
+     * Удалить токен (выход)
+     */
+    static clearToken() {
+        sessionStorage.removeItem(CONFIG.STORAGE_KEYS.GOOGLE_TOKEN);
+    }
+
+    /**
+     * Загрузить Google Client ID с сервера
+     */
+    static async fetchGoogleClientId() {
+        try {
+            const response = await fetch(`${CONFIG.API.BASE_URL}/auth/google-client-id`);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            const data = await response.json();
+            this.googleClientId = data.google_client_id;
+            console.log('✅ Google Client ID получен');
+            return this.googleClientId;
+        } catch (error) {
+            console.error('❌ Не удалось получить Google Client ID:', error);
+            return null;
+        }
+    }
+
+    /**
+     * Инициализировать Google Identity Services и нарисовать кнопку
+     */
+    static async initGoogleSignIn() {
+        // Получаем Client ID с сервера
+        const clientId = await this.fetchGoogleClientId();
+
+        if (!clientId) {
+            this.showError('Не удалось загрузить настройки авторизации. Проверьте подключение к серверу.');
+            return false;
         }
 
-        const inputHash = await this.hashPassword(password);
-        return inputHash === storedHash;
-    }
-
-    /**
-     * Установить новый пароль
-     */
-    static async setPassword(newPassword) {
-        const passwordHash = await this.hashPassword(newPassword);
-
-        DataManager.updateConfig({
-            passwordHash: passwordHash
+        // Ждём, пока загрузится Google Identity Services скрипт
+        const waitForGoogle = (timeoutMs = 5000) => new Promise((resolve, reject) => {
+            const startedAt = Date.now();
+            const tick = () => {
+                if (window.google && window.google.accounts && window.google.accounts.id) {
+                    resolve();
+                } else if (Date.now() - startedAt > timeoutMs) {
+                    reject(new Error('Google Identity Services не загрузился'));
+                } else {
+                    setTimeout(tick, 100);
+                }
+            };
+            tick();
         });
 
-        console.log('✅ Пароль установлен');
-
-        return { success: true };
-    }
-
-    /**
-     * Изменить пароль
-     */
-    static async changePassword(oldPassword, newPassword) {
-        // Проверяем старый пароль
-        const isValid = await this.verifyPassword(oldPassword);
-
-        if (!isValid) {
-            return {
-                success: false,
-                error: 'Неверный старый пароль'
-            };
+        try {
+            await waitForGoogle();
+        } catch (error) {
+            console.error('❌', error.message);
+            this.showError('Google не загрузился. Проверьте подключение к интернету и блокировщики рекламы.');
+            return false;
         }
 
-        // Устанавливаем новый пароль
-        await this.setPassword(newPassword);
-
-        return { success: true };
-    }
-
-    /**
-     * Удалить пароль
-     */
-    static removePassword() {
-        DataManager.updateConfig({
-            passwordHash: null
+        // Инициализация Google Sign-In
+        window.google.accounts.id.initialize({
+            client_id: clientId,
+            callback: (response) => this.handleGoogleResponse(response),
+            auto_select: false,
+            cancel_on_tap_outside: false
         });
 
-        console.log('✅ Пароль удален');
-
-        return { success: true };
-    }
-
-    /**
-     * Проверить установлен ли пароль
-     */
-    static hasPassword() {
-        const config = DataManager.getConfig();
-        return !!config.passwordHash;
-    }
-
-    /**
-     * Войти
-     */
-    static async login(password) {
-        if (!this.hasPassword()) {
-            // Пароль не установлен - входим без проверки
-            this.isAuthenticated = true;
-            return { success: true };
+        // Рисуем кнопку
+        const buttonContainer = document.getElementById('g_id_signin');
+        if (buttonContainer) {
+            window.google.accounts.id.renderButton(buttonContainer, {
+                type: 'standard',
+                theme: 'outline',
+                size: 'large',
+                text: 'signin_with',
+                shape: 'rectangular',
+                logo_alignment: 'left',
+                width: 280
+            });
         }
 
-        const isValid = await this.verifyPassword(password);
+        return true;
+    }
 
-        if (isValid) {
+    /**
+     * Обработчик ответа от Google (приходит после успешного входа)
+     */
+    static async handleGoogleResponse(response) {
+        if (!response || !response.credential) {
+            this.showError('Не удалось получить токен от Google');
+            return;
+        }
+
+        const token = response.credential;
+        this.setToken(token);
+
+        // Проверяем токен на сервере, одновременно проверяем что email в whitelist
+        try {
+            const authCheck = await fetch(`${CONFIG.API.BASE_URL}/categories`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            if (authCheck.status === 401 || authCheck.status === 403) {
+                // Email не в whitelist или токен невалиден
+                this.clearToken();
+                this.showError('Ваш email не имеет доступа к этому приложению.');
+                return;
+            }
+
+            if (!authCheck.ok) {
+                this.clearToken();
+                this.showError(`Ошибка сервера: ${authCheck.status}`);
+                return;
+            }
+
+            // Всё ок — запускаем приложение
             this.isAuthenticated = true;
-            return { success: true };
-        } else {
-            return {
-                success: false,
-                error: 'Неверный пароль'
-            };
+            this.hideLoginScreen();
+
+            if (window.BudgetApp && window.BudgetApp.init) {
+                await window.BudgetApp.init();
+            }
+
+        } catch (error) {
+            console.error('❌ Ошибка проверки токена:', error);
+            this.clearToken();
+            this.showError('Не удалось связаться с сервером. Попробуйте позже.');
         }
     }
 
     /**
-     * Выйти
+     * Выход
      */
     static logout() {
+        this.clearToken();
         this.isAuthenticated = false;
+
+        // Отключаем автологин Google
+        if (window.google && window.google.accounts && window.google.accounts.id) {
+            window.google.accounts.id.disableAutoSelect();
+        }
+
         console.log('✅ Выход выполнен');
+
+        // Перезагружаем страницу для чистого старта
+        window.location.reload();
+    }
+
+    /**
+     * Показать сообщение об ошибке
+     */
+    static showError(message) {
+        const loginError = document.getElementById('login-error');
+        if (loginError) {
+            loginError.textContent = message;
+            loginError.classList.remove('hidden');
+        }
+        console.error('Ошибка входа:', message);
+    }
+
+    /**
+     * Скрыть сообщение об ошибке
+     */
+    static hideError() {
+        const loginError = document.getElementById('login-error');
+        if (loginError) {
+            loginError.classList.add('hidden');
+        }
     }
 
     /**
@@ -156,90 +230,45 @@ export class AuthManager {
     }
 
     /**
-     * Инициализировать обработчики логина
-     */
-    static initLoginHandlers() {
-        const loginForm = document.getElementById('login-form');
-        const passwordInput = document.getElementById('password-input');
-        const loginButton = document.getElementById('login-button');
-        const loginError = document.getElementById('login-error');
-
-        if (!loginForm || !passwordInput || !loginButton) {
-            console.error('Элементы формы логина не найдены');
-            return;
-        }
-
-        const handleLogin = async (e) => {
-            e.preventDefault();
-
-            const password = passwordInput.value;
-
-            if (!password) {
-                if (loginError) {
-                    loginError.textContent = 'Введите пароль';
-                    loginError.classList.remove('hidden');
-                }
-                return;
-            }
-
-            loginButton.disabled = true;
-            loginButton.textContent = 'Проверка...';
-
-            const result = await this.login(password);
-
-            if (result.success) {
-                // Успешный вход
-                this.hideLoginScreen();
-
-                // Загружаем приложение
-                if (window.BudgetApp && window.BudgetApp.init) {
-                    await window.BudgetApp.init();
-                }
-
-            } else {
-                // Ошибка входа
-                if (loginError) {
-                    loginError.textContent = result.error || 'Ошибка входа';
-                    loginError.classList.remove('hidden');
-                }
-
-                passwordInput.value = '';
-                passwordInput.focus();
-            }
-
-            loginButton.disabled = false;
-            loginButton.textContent = 'Войти';
-        };
-
-        loginForm.addEventListener('submit', handleLogin);
-        loginButton.addEventListener('click', handleLogin);
-
-        // Скрыть ошибку при вводе
-        passwordInput.addEventListener('input', () => {
-            if (loginError) {
-                loginError.classList.add('hidden');
-            }
-        });
-
-        // Фокус на поле пароля при загрузке
-        passwordInput.focus();
-    }
-
-    /**
-     * Проверить аутентификацию при запуске
+     * Проверить аутентификацию при запуске.
+     * Если токен есть в sessionStorage — пробуем его использовать.
+     * Если нет или невалиден — показываем экран логина с кнопкой Google.
      */
     static async checkAuth() {
-        if (!this.hasPassword()) {
-            // Пароль не установлен - автологин
-            this.isAuthenticated = true;
-            this.hideLoginScreen();
-            return true;
-        } else {
-            // Нужен пароль - показываем экран логина
-            this.showLoginScreen();
-            this.initLoginHandlers();
-            return false;
+        const token = this.getToken();
+
+        if (token) {
+            // Есть токен — пробуем дёрнуть API, чтобы убедиться что он рабочий
+            try {
+                const response = await fetch(`${CONFIG.API.BASE_URL}/categories`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (response.ok) {
+                    this.isAuthenticated = true;
+                    this.hideLoginScreen();
+                    return true;
+                }
+
+                // Токен невалиден — стираем и показываем логин
+                console.log('Токен невалиден, требуется повторный вход');
+                this.clearToken();
+            } catch (error) {
+                console.warn('Не удалось проверить токен:', error);
+                // Сервер недоступен — попробуем работать с токеном (api.js всё равно сделает retry)
+                this.isAuthenticated = true;
+                this.hideLoginScreen();
+                return true;
+            }
         }
+
+        // Нет токена или невалиден — показываем экран входа
+        this.showLoginScreen();
+        await this.initGoogleSignIn();
+        return false;
     }
 }
 
