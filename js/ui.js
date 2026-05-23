@@ -209,11 +209,6 @@ export class UIManager {
             clearAllBtn.addEventListener('click', () => this.clearAllData());
         }
 
-        const changePasswordBtn = document.getElementById('change-password-btn');
-        if (changePasswordBtn) {
-            changePasswordBtn.addEventListener('click', () => this.changePassword());
-        }
-
         // Инициализация данных
         this.initPeriodSelector();
         this.updateExchangeRatesDisplay();
@@ -2554,44 +2549,6 @@ export class UIManager {
         } catch (error) {
             console.error('❌ Ошибка очистки данных:', error);
             alert('Ошибка очистки данных');
-        }
-    }
-
-    /**
-     * Смена пароля
-     */
-    static async changePassword() {
-        const currentPassword = prompt('Введите текущий пароль:');
-        if (!currentPassword) {
-            return;
-        }
-
-        // Проверить текущий пароль
-        const isValid = await window.BudgetApp.AuthManager.verifyPassword(currentPassword);
-        if (!isValid) {
-            alert('Неверный текущий пароль');
-            return;
-        }
-
-        const newPassword = prompt('Введите новый пароль (минимум 6 символов):');
-        if (!newPassword || newPassword.length < 6) {
-            alert('Пароль должен содержать минимум 6 символов');
-            return;
-        }
-
-        const confirmPassword = prompt('Подтвердите новый пароль:');
-        if (newPassword !== confirmPassword) {
-            alert('Пароли не совпадают');
-            return;
-        }
-
-        try {
-            await window.BudgetApp.AuthManager.changePassword(newPassword);
-            alert('Пароль успешно изменен');
-            console.log('✅ Пароль изменен');
-        } catch (error) {
-            console.error('❌ Ошибка смены пароля:', error);
-            alert('Ошибка смены пароля: ' + error.message);
         }
     }
 }
