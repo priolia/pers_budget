@@ -151,9 +151,14 @@ class DataManagerClass {
      * Добавить трату
      */
     addExpense(expenseData) {
+        // Снимок имени категории на момент создания траты.
+        // Нужен для читаемости файлов экспорта после переименования/удаления категории.
+        const category = this.getCategoryById(expenseData.categoryId);
+
         const expense = {
             id: this.generateId(CONFIG.ID_FORMATS.EXPENSE),
             categoryId: expenseData.categoryId,
+            categoryName: category ? category.name : '',
             date: expenseData.date || new Date().toISOString(),
             description: expenseData.description || '',
             amount: expenseData.amount || 0,
@@ -178,6 +183,14 @@ class DataManagerClass {
         if (index === -1) {
             console.error(`Трата с ID ${id} не найдена`);
             return null;
+        }
+
+        // Если в обновлении меняется категория — пересчитываем снимок имени.
+        // Если categoryId не передан или совпадает с текущим — снимок не трогаем.
+        const oldCategoryId = this.expenses[index].categoryId;
+        if (updates.categoryId && updates.categoryId !== oldCategoryId) {
+            const newCategory = this.getCategoryById(updates.categoryId);
+            updates.categoryName = newCategory ? newCategory.name : '';
         }
 
         this.expenses[index] = {
