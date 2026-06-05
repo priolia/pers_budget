@@ -955,6 +955,7 @@ export class UIManager {
         let totalPlannedRest = 0;   // Σ max(0, план − факт по monthly) — сколько ещё можно потратить из месячного
         let totalOverspend = 0;     // Σ max(0, факт по monthly − план) — перерасход ИЗ МЕСЯЧНОГО (запас не учитываем)
         let dailyLimitRest = 0;     // Σ max(0, план − факт_monthly) — но только по категориям с includeInDailyLimit=true
+        const dailyLimitNames = []; // названия категорий с includeInDailyLimit=true — для подписи в карточке
 
         // Сортируем категории по порядку
         const sortedCategories = [...categories].sort((a, b) => (a.order || 0) - (b.order || 0));
@@ -1022,6 +1023,7 @@ export class UIManager {
             totalOverspend += Math.max(0, factMonthly - plan);
             if (category.includeInDailyLimit) {
                 dailyLimitRest += Math.max(0, plan - factMonthly);
+                dailyLimitNames.push(category.name);
             }
         });
 
@@ -1140,7 +1142,7 @@ export class UIManager {
         this._renderReservesWidget();
 
         // ─── ВЕРХ: дни / % исполнения / план в день ───
-        this._updateTopCards(incomeEuro, totalFactMonthly, totalPlan, totalPlannedRest, freeFunds, dailyLimitRest);
+        this._updateTopCards(incomeEuro, totalFactMonthly, totalPlan, totalPlannedRest, freeFunds, dailyLimitRest, dailyLimitNames);
 
         // Обновить график
         this.updateChart(categories, categoryTotals);
@@ -1183,12 +1185,19 @@ export class UIManager {
      *   3) «Дневной лимит» — Σ остатков по ОТМЕЧЕННЫМ категориям / дней
      *
      * @param {number} dailyLimitRest — Σ max(0, план − факт) только по категориям с includeInDailyLimit=true
+     * @param {string[]} dailyLimitNames — названия отмеченных категорий (для подписи в карточке)
      */
-    static _updateTopCards(income, totalFact, totalPlan, totalPlannedRest, freeFunds, dailyLimitRest = 0) {
+    static _updateTopCards(income, totalFact, totalPlan, totalPlannedRest, freeFunds, dailyLimitRest = 0, dailyLimitNames = []) {
         const setText = (id, text) => {
             const el = document.getElementById(id);
             if (el) el.textContent = text;
         };
+
+        // ─── Подпись карточки «Дневной лимит»: перечень выбранных категорий ───
+        const dailySublabel = dailyLimitNames.length > 0
+            ? dailyLimitNames.join(', ')
+            : 'по выбранным категориям';
+        setText('plan-perday-sublabel', dailySublabel);
 
         // ─── Карточка «% исполнения бюджета» ───
         const execPct = totalPlan > 0 ? (totalFact / totalPlan * 100) : 0;
