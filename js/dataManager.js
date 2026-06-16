@@ -10,10 +10,12 @@ class DataManagerClass {
         this.categories = [];
         this.expenses = [];
         this.config = this.getDefaultConfig();
+        this.snapshots = [];
         this.listeners = {
             categoriesChange: [],
             expensesChange: [],
-            configChange: []
+            configChange: [],
+            snapshotsChange: []
         };
     }
 
@@ -68,6 +70,14 @@ class DataManagerClass {
         };
 
         this.categories.push(category);
+        this.addSnapshot({
+            type: 'category_created',
+            entityId: category.id,
+            entityName: category.name,
+            field: null,
+            oldValue: null,
+            newValue: null
+        });
         this.notifyListeners('categoriesChange');
         return category;
     }
@@ -80,6 +90,17 @@ class DataManagerClass {
         if (index === -1) {
             console.error(`Категория с ID ${id} не найдена`);
             return null;
+        }
+
+        const old = this.categories[index];
+        if ('name' in updates && updates.name !== old.name) {
+            this.addSnapshot({ type: 'category_name', entityId: id, entityName: updates.name, field: 'name', oldValue: old.name, newValue: updates.name });
+        }
+        if ('limit' in updates && updates.limit !== old.limit) {
+            this.addSnapshot({ type: 'category_limit', entityId: id, entityName: old.name, field: 'limit', oldValue: old.limit, newValue: updates.limit });
+        }
+        if ('percentage' in updates && updates.percentage !== old.percentage) {
+            this.addSnapshot({ type: 'category_limit', entityId: id, entityName: old.name, field: 'percentage', oldValue: old.percentage, newValue: updates.percentage });
         }
 
         this.categories[index] = {
@@ -103,6 +124,15 @@ class DataManagerClass {
             return false;
         }
 
+        const removed = this.categories[index];
+        this.addSnapshot({
+            type: 'category_deleted',
+            entityId: removed.id,
+            entityName: removed.name,
+            field: null,
+            oldValue: null,
+            newValue: null
+        });
         this.categories.splice(index, 1);
         this.notifyListeners('categoriesChange');
         return true;
@@ -243,6 +273,7 @@ class DataManagerClass {
         return {
             passwordHash: null,
             periodStartDay: CONFIG.DEFAULTS.PERIOD_START_DAY,
+            baselineSnapshotDone: false,
             reserves: [
                 { id: 'reserve_eur', name: 'Запас EUR', icon: '💶', currency: 'EUR', balance: 0 },
                 { id: 'reserve_uah', name: 'Запас UAH', icon: '🇺🇦', currency: 'UAH', balance: 0 }
@@ -285,6 +316,18 @@ class DataManagerClass {
      * Обновить настройки
      */
     updateSettings(settings) {
+        const oldS = this.config.settings || {};
+        const globalMap = [
+            ['incomeEuro', 'income', 'incomeEuro'],
+            ['taxRate', 'tax_rate', 'taxRate'],
+            ['limitFop', 'fop_limit', 'limitFop'],
+            ['periodStartDay', 'period_start_day', 'periodStartDay']
+        ];
+        globalMap.forEach(([key, snapType, field]) => {
+            if (key in settings && settings[key] !== oldS[key]) {
+                this.addSnapshot({ type: snapType, entityId: null, entityName: null, field: field, oldValue: (oldS[key] !== undefined ? oldS[key] : null), newValue: settings[key] });
+            }
+        });
         this.config.settings = {
             ...this.config.settings,
             ...settings
@@ -346,10 +389,72 @@ class DataManagerClass {
             console.error(`Копилка с ID ${id} не найдена`);
             return null;
         }
-        reserves[idx] = { ...reserves[idx], balance: parseFloat(balance) || 0 };
+        const oldReserve = reserves[idx];
+        const newBalance = parseFloat(balance) || 0;
+        if (newBalance !== oldReserve.balance) {
+            this.addSnapshot({ type: 'reserve_balance', entityId: oldReserve.id, entityName: oldReserve.name, field: 'balance', oldValue: oldReserve.balance, newValue: newBalance });
+        }
+        reserves[idx] = { ...reserves[idx], balance: newBalance };
         this.config.reserves = reserves;
         this.notifyListeners('configChange');
         return reserves[idx];
+    }
+
+    // ============================================
+    // SNAPSHOTS (change log)
+    // ============================================
+
+    /**
+     * Add a snapshot record. Accepts a partial record; fills id/timestamp/baseline.
+     */
+    addSnapshot(partial) {
+        const snapshot = {
+            id: this.generateId('snap'),
+            timestamp: new Date().toISOString(),
+            type: partial.type,
+            entityId: (partial.entityId !== undefined ? partial.entityId : null),
+            entityName: (partial.entityName !== undefined ? partial.entityName : null),
+            field: (partial.field !== undefined ? partial.field : null),
+            oldValue: (partial.oldValue !== undefined ? partial.oldValue : null),
+            newValue: (partial.newValue !== undefined ? partial.newValue : null),
+            baseline: partial.baseline === true
+        };
+        this.snapshots.push(snapshot);
+        this.notifyListeners('snapshotsChange');
+        return snapshot;
+    }
+
+    /**
+     * Get a copy of all snapshots.
+     */
+    getSnapshots() {
+        return [...this.snapshots];
+    }
+
+    /**
+     * Replace snapshots from server (no new records created).
+     */
+    setSnapshots(arr) {
+        this.snapshots = Array.isArray(arr) ? arr : [];
+    }
+
+    /**
+     * Stamp current state as the zero point. All records baseline: true.
+     */
+    createBaselineSnapshot() {
+        const s = this.config.settings || {};
+        this.categories.forEach(cat => {
+            this.addSnapshot({ type: 'category_limit', entityId: cat.id, entityName: cat.name, field: 'limit', oldValue: null, newValue: (cat.limit !== undefined ? cat.limit : null), baseline: true });
+            this.addSnapshot({ type: 'category_limit', entityId: cat.id, entityName: cat.name, field: 'percentage', oldValue: null, newValue: (cat.percentage !== undefined ? cat.percentage : null), baseline: true });
+        });
+        const periodStartDay = (s.periodStartDay !== undefined ? s.periodStartDay : (this.config.periodStartDay !== undefined ? this.config.periodStartDay : null));
+        this.addSnapshot({ type: 'income', entityId: null, entityName: null, field: 'incomeEuro', oldValue: null, newValue: (s.incomeEuro !== undefined ? s.incomeEuro : null), baseline: true });
+        this.addSnapshot({ type: 'tax_rate', entityId: null, entityName: null, field: 'taxRate', oldValue: null, newValue: (s.taxRate !== undefined ? s.taxRate : null), baseline: true });
+        this.addSnapshot({ type: 'fop_limit', entityId: null, entityName: null, field: 'limitFop', oldValue: null, newValue: (s.limitFop !== undefined ? s.limitFop : null), baseline: true });
+        this.addSnapshot({ type: 'period_start_day', entityId: null, entityName: null, field: 'periodStartDay', oldValue: null, newValue: periodStartDay, baseline: true });
+        (this.config.reserves || []).forEach(r => {
+            this.addSnapshot({ type: 'reserve_balance', entityId: r.id, entityName: r.name, field: 'balance', oldValue: null, newValue: (r.balance !== undefined ? r.balance : null), baseline: true });
+        });
     }
 
     // ============================================
