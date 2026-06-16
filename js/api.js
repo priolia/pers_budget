@@ -298,6 +298,52 @@ class BudgetAPIClass {
     }
 
     // ============================================
+    // API МЕТОДЫ - СНАПШОТЫ
+    // ============================================
+
+    /**
+     * Load snapshots log from server (returns a plain array).
+     */
+    async fetchSnapshots() {
+        if (!CONFIG.API.USE_API) {
+            return this.loadSnapshotsFromLocalStorage();
+        }
+        try {
+            const data = await this.requestWithRetry('/snapshots', { method: 'GET' });
+            this.lastSyncTime = new Date();
+            if (Array.isArray(data)) return data;
+            if (data && Array.isArray(data.snapshots)) return data.snapshots;
+            return [];
+        } catch (error) {
+            console.error('Ошибка загрузки снапшотов:', error);
+            return this.loadSnapshotsFromLocalStorage();
+        }
+    }
+
+    /**
+     * Save snapshots log to server (sends a plain array).
+     */
+    async pushSnapshots(snapshots) {
+        const arr = Array.isArray(snapshots) ? snapshots : [];
+        if (!CONFIG.API.USE_API) {
+            return this.saveSnapshotsToLocalStorage(arr);
+        }
+        try {
+            const result = await this.requestWithRetry('/snapshots', {
+                method: 'POST',
+                body: JSON.stringify(arr)
+            });
+            this.lastSyncTime = new Date();
+            console.log('✅ Снапшоты сохранены на сервер');
+            return result;
+        } catch (error) {
+            console.error('Ошибка сохранения снапшотов:', error);
+            this.saveSnapshotsToLocalStorage(arr);
+            throw error;
+        }
+    }
+
+    // ============================================
     // API МЕТОДЫ - СВОДНЫЕ
     // ============================================
 
@@ -306,16 +352,18 @@ class BudgetAPIClass {
      */
     async fetchAll() {
         try {
-            const [categories, expenses, config] = await Promise.all([
+            const [categories, expenses, config, snapshots] = await Promise.all([
                 this.fetchCategories(),
                 this.fetchExpenses(),
-                this.fetchConfig()
+                this.fetchConfig(),
+                this.fetchSnapshots()
             ]);
 
             return {
                 categories: categories.categories || [],
                 expenses: expenses.expenses || [],
-                config: config
+                config: config,
+                snapshots: Array.isArray(snapshots) ? snapshots : []
             };
         } catch (error) {
             console.error('Ошибка загрузки данных:', error);
@@ -326,13 +374,17 @@ class BudgetAPIClass {
     /**
      * Сохранить все данные
      */
-    async pushAll(categories, expenses, config) {
+    async pushAll(categories, expenses, config, snapshots) {
         try {
-            await Promise.all([
+            const tasks = [
                 this.pushCategories(categories),
                 this.pushExpenses(expenses),
                 this.pushConfig(config)
-            ]);
+            ];
+            if (snapshots !== undefined) {
+                tasks.push(this.pushSnapshots(snapshots));
+            }
+            await Promise.all(tasks);
 
             console.log('✅ Все данные сохранены');
             return { success: true };
@@ -421,6 +473,15 @@ class BudgetAPIClass {
 
     saveConfigToLocalStorage(config) {
         localStorage.setItem(CONFIG.STORAGE_KEYS.CONFIG, JSON.stringify(config));
+    }
+
+    loadSnapshotsFromLocalStorage() {
+        const data = localStorage.getItem(CONFIG.STORAGE_KEYS.SNAPSHOTS);
+        return data ? JSON.parse(data) : [];
+    }
+
+    saveSnapshotsToLocalStorage(snapshots) {
+        localStorage.setItem(CONFIG.STORAGE_KEYS.SNAPSHOTS, JSON.stringify(Array.isArray(snapshots) ? snapshots : []));
     }
 }
 
