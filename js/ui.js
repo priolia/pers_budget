@@ -965,20 +965,24 @@ export class UIManager {
             const factMonthly = categoryTotalsMonthly[category.id] || 0;
             const factReserve = categoryTotalsFromReserve[category.id] || 0;
             const fact = factMonthly + factReserve;
-            const percentage = plan > 0 ? (fact / plan * 100) : 0;
-            const remaining = plan - fact;
+            // % исполнения, остаток и €/день — по МЕСЯЧНОМУ факту:
+            // траты из запаса не давят на месячный бюджет (как в итогах и нижних карточках).
+            const percentage = plan > 0 ? (factMonthly / plan * 100) : 0;
+            const remaining = plan - factMonthly;
+            // Цвет строки — по ОБЩЕМУ факту (включая запас), как и раньше.
+            const colorPercentage = plan > 0 ? (fact / plan * 100) : 0;
 
             const row = document.createElement('tr');
 
             // Цветовая индикация — по ОБЩЕМУ факту (включая запас), как ты просила
             let colorClass = '';
-            if (percentage < 50) {
+            if (colorPercentage < 50) {
                 colorClass = 'budget-under-50';
-            } else if (percentage >= 50 && percentage < 90) {
+            } else if (colorPercentage >= 50 && colorPercentage < 90) {
                 colorClass = 'budget-50-90';
-            } else if (percentage >= 90 && percentage < 100) {
+            } else if (colorPercentage >= 90 && colorPercentage < 100) {
                 colorClass = 'budget-90-100';
-            } else if (percentage >= 100) {
+            } else if (colorPercentage >= 100) {
                 colorClass = 'budget-over-100';
             }
             row.className = colorClass;
