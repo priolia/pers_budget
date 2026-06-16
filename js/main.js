@@ -47,6 +47,9 @@ window.BudgetApp = {
             // 2. Загрузка данных
             await this.loadData();
 
+            // 2.5 Baseline snapshot (created once, guarded by config flag)
+            await this.ensureBaselineSnapshot();
+
             // 3. Проверка необходимости миграции
             const migrationStatus = MigrationManager.getMigrationStatus();
             console.log(migrationStatus.message);
@@ -96,6 +99,7 @@ window.BudgetApp = {
             DataManager.setCategories(data.categories);
             DataManager.setExpenses(data.expenses);
             DataManager.setConfig(data.config);
+            DataManager.setSnapshots(data.snapshots);
 
             console.log(`✅ Загружено: ${data.categories.length} категорий, ${data.expenses.length} трат`);
 
@@ -114,9 +118,30 @@ window.BudgetApp = {
             DataManager.setCategories(categoriesData.categories || []);
             DataManager.setExpenses(expensesData.expenses || []);
             DataManager.setConfig(configData);
+            DataManager.setSnapshots(BudgetAPI.loadSnapshotsFromLocalStorage());
 
             return { success: false, fallbackToLocal: true };
         }
+    },
+
+    /**
+     * Create the baseline snapshot once. Guarded by config.baselineSnapshotDone.
+     */
+    async ensureBaselineSnapshot() {
+        const config = DataManager.getConfig();
+        if (config.baselineSnapshotDone === true) {
+            return;
+        }
+        const hasData = DataManager.getCategories().length > 0 ||
+            (config.settings && Object.keys(config.settings).length > 0);
+        if (!hasData) {
+            console.warn('⚠️ Базовый снимок пропущен: данных нет');
+            return;
+        }
+        DataManager.createBaselineSnapshot();
+        DataManager.updateConfig({ baselineSnapshotDone: true });
+        await this.saveData();
+        console.log('✅ Базовый снимок создан');
     },
 
     /**
@@ -127,8 +152,9 @@ window.BudgetApp = {
             const categories = DataManager.getCategories();
             const expenses = DataManager.getExpenses();
             const config = DataManager.getConfig();
+            const snapshots = DataManager.getSnapshots();
 
-            await BudgetAPI.pushAll(categories, expenses, config);
+            await BudgetAPI.pushAll(categories, expenses, config, snapshots);
 
             console.log('✅ Данные сохранены');
 
