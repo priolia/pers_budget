@@ -63,13 +63,23 @@ class SyncManagerClass {
             // 5. Мёрдж конфига (конфиг не конфликтует, берем новейший)
             const mergedConfig = this.mergeConfig(localConfig, serverData.config);
 
+            // 5b. Merge snapshots (append-only log, union by id)
+            const localSnapshots = DataManager.getSnapshots();
+            const serverSnapshots = Array.isArray(serverData.snapshots) ? serverData.snapshots : [];
+            const snapById = new Map();
+            [...serverSnapshots, ...localSnapshots].forEach(snap => {
+                if (snap && snap.id) snapById.set(snap.id, snap);
+            });
+            const mergedSnapshots = Array.from(snapById.values());
+
             // 6. Обновить локальные данные
             DataManager.setCategories(mergedCategories);
             DataManager.setExpenses(mergedExpenses);
             DataManager.setConfig(mergedConfig);
+            DataManager.setSnapshots(mergedSnapshots);
 
             // 7. Отправить на сервер
-            await BudgetAPI.pushAll(mergedCategories, mergedExpenses, mergedConfig);
+            await BudgetAPI.pushAll(mergedCategories, mergedExpenses, mergedConfig, mergedSnapshots);
 
             this.lastSyncTime = new Date();
 
@@ -344,6 +354,7 @@ class SyncManagerClass {
             DataManager.setCategories(serverData.categories);
             DataManager.setExpenses(serverData.expenses);
             DataManager.setConfig(serverData.config);
+            DataManager.setSnapshots(serverData.snapshots);
 
             console.log('✅ Данные загружены с сервера');
             return { success: true };
