@@ -25,6 +25,7 @@ export const CONFIG = {
         CATEGORIES: 'budget_categories_v2',
         EXPENSES: 'budget_expenses_v2',
         CONFIG: 'budget_config_v2',
+        SNAPSHOTS: 'budget_snapshots_v2',
         LAST_SYNC: 'budget_last_sync',
         GOOGLE_TOKEN: 'budget_google_token'  // ключ для sessionStorage
     },
