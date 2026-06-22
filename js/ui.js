@@ -6,6 +6,8 @@
 import { DataManager } from './dataManager.js';
 import { DateUtils } from './utils/dates.js';
 import { CurrencyUtils } from './utils/currency.js';
+import { ReportUtils } from './utils/reports.js';
+import { ExportUtils } from './utils/export.js';
 
 /**
  * Словарь автоматических иконок для новых категорий.
@@ -209,6 +211,22 @@ export class UIManager {
             clearAllBtn.addEventListener('click', () => this.clearAllData());
         }
 
+        // Reports tab controls
+        this._reportFromKey = this._reportFromKey || null;
+        this._reportToKey = this._reportToKey || null;
+        const reportFrom = document.getElementById('report-from');
+        const reportTo = document.getElementById('report-to');
+        if (reportFrom) reportFrom.addEventListener('change', () => this.renderReports());
+        if (reportTo) reportTo.addEventListener('change', () => this.renderReports());
+        const reportReset = document.getElementById('report-reset');
+        if (reportReset) reportReset.addEventListener('click', () => {
+            this._reportFromKey = null;
+            this._reportToKey = null;
+            this.renderReports(true);
+        });
+        const reportExportBtn = document.getElementById('report-export-csv');
+        if (reportExportBtn) reportExportBtn.addEventListener('click', () => this.exportReportCSV());
+
         // Инициализация данных
         this.initPeriodSelector();
         this.updateExchangeRatesDisplay();
@@ -261,6 +279,8 @@ export class UIManager {
             this.renderReferenceTable();
         } else if (tabName === 'expenses') {
             this.renderExpensesTable();
+        } else if (tabName === 'reports') {
+            this.renderReports();
         }
     }
 
@@ -2563,6 +2583,155 @@ export class UIManager {
             console.error('❌ Ошибка очистки данных:', error);
             alert('Ошибка очистки данных');
         }
+    }
+
+    // ============================================
+    // REPORTS TAB (Phase 2)
+    // ============================================
+
+    static renderReports(forceRefill = false) {
+        const table = document.getElementById('report-table');
+        if (!table) return;
+
+        const fromSel = document.getElementById('report-from');
+        const toSel = document.getElementById('report-to');
+        if (!forceRefill && fromSel && fromSel.value) this._reportFromKey = fromSel.value;
+        if (!forceRefill && toSel && toSel.value) this._reportToKey = toSel.value;
+
+        // Keep from <= to.
+        if (this._reportFromKey && this._reportToKey &&
+            Number(this._reportFromKey) > Number(this._reportToKey)) {
+            const t = this._reportFromKey;
+            this._reportFromKey = this._reportToKey;
+            this._reportToKey = t;
+        }
+
+        const expenses = DataManager.getExpenses();
+        const categories = DataManager.getCategories();
+        const snapshots = DataManager.getSnapshots();
+        const config = DataManager.getConfig();
+
+        const options = {};
+        if (this._reportFromKey) options.fromKey = this._reportFromKey;
+        if (this._reportToKey) options.toKey = this._reportToKey;
+
+        const model = ReportUtils.buildReport(expenses, categories, snapshots, config, options);
+        this._lastReport = model;
+
+        const needFill = forceRefill || !fromSel || fromSel.options.length !== model.allPeriods.length;
+        this._fillReportSelectors(model, needFill);
+        this._renderReportTopMovers(model);
+        this._renderReportTable(model);
+    }
+
+    static _fillReportSelectors(model, needFill) {
+        const fromSel = document.getElementById('report-from');
+        const toSel = document.getElementById('report-to');
+        if (!fromSel || !toSel) return;
+
+        if (needFill) {
+            const opts = model.allPeriods
+                .map(p => `<option value="${p.key}">${this._escapeHtml(p.label)}</option>`)
+                .join('');
+            fromSel.innerHTML = opts;
+            toSel.innerHTML = opts;
+            const shown = model.periods;
+            if (shown.length) {
+                fromSel.value = this._reportFromKey || shown[0].key;
+                toSel.value = this._reportToKey || shown[shown.length - 1].key;
+            }
+        } else {
+            if (this._reportFromKey) fromSel.value = this._reportFromKey;
+            if (this._reportToKey) toSel.value = this._reportToKey;
+        }
+        this._reportFromKey = fromSel.value || null;
+        this._reportToKey = toSel.value || null;
+    }
+
+    static _fmtMoney(v) {
+        if (v === null || v === undefined) return '—';
+        return Math.round(v).toLocaleString('ru-RU');
+    }
+
+    static _renderReportTopMovers(model) {
+        const box = document.getElementById('report-top-movers');
+        if (!box) return;
+        if ((!model.topUp || !model.topUp.length) && (!model.topDown || !model.topDown.length)) {
+            box.innerHTML = '<div class="report-note">Топ-движение появится, когда наберётся минимум 3 закрытых периода.</div>';
+            return;
+        }
+        const line = (m, cls, sign) => {
+            const pct = (m.deltaPct === null || m.deltaPct === undefined)
+                ? '' : ` (${sign}${Math.abs(Math.round(m.deltaPct))}%)`;
+            return `<div class="${cls}">${sign}${this._fmtMoney(Math.abs(m.delta))} € — ${this._escapeHtml(m.name)}${pct}</div>`;
+        };
+        const up = (model.topUp || []).map(m => line(m, 'mover-up', '+')).join('');
+        const down = (model.topDown || []).map(m => line(m, 'mover-down', '−')).join('');
+        box.innerHTML =
+            `<div class="report-movers-col"><h4>Рост расхода</h4>${up || '<div class="report-note">—</div>'}</div>` +
+            `<div class="report-movers-col"><h4>Снижение расхода</h4>${down || '<div class="report-note">—</div>'}</div>`;
+    }
+
+    static _renderReportTable(model) {
+        const table = document.getElementById('report-table');
+        if (!table) return;
+        const thead = table.querySelector('thead');
+        const tbody = table.querySelector('tbody');
+
+        const headCells = ['<th class="report-cat">Категория</th>'];
+        model.periods.forEach(p => {
+            let label = this._escapeHtml(p.label);
+            if (p.isCurrent && p.partial) {
+                label += `<br><span class="report-note">частичный, ${p.partial.daysPassed} из ${p.partial.daysTotal} дн.</span>`;
+            }
+            headCells.push(`<th${p.isCurrent ? ' class="report-partial"' : ''}>${label}</th>`);
+        });
+        headCells.push('<th class="report-stat">Среднее</th><th class="report-stat">Мин</th><th class="report-stat">Макс</th>');
+        thead.innerHTML = `<tr>${headCells.join('')}</tr>`;
+
+        const rowsHtml = model.rows.map(r => {
+            const cells = [`<td class="report-cat">${this._escapeHtml(r.name)}</td>`];
+            model.periods.forEach(p => {
+                const c = r.cells[p.key];
+                const partialCls = p.isCurrent ? ' report-partial' : '';
+                if (!c || c.fact === null) {
+                    cells.push(`<td class="report-cell${partialCls}"><div class="rc-fact">—</div></td>`);
+                    return;
+                }
+                let html = `<div class="rc-fact">${this._fmtMoney(c.fact)}</div>`;
+                if (typeof c.limit === 'number') {
+                    const pct = (typeof c.percentage === 'number') ? ` (${c.percentage}%)` : '';
+                    html += `<div class="rc-limit">лим ${this._fmtMoney(c.limit)}${pct}</div>`;
+                }
+                if (c.execPct !== null && c.execPct !== undefined) {
+                    const cls = ReportUtils.execClass(c.execPct);
+                    html += `<div class="rc-exec exec-${cls}">${Math.round(c.execPct)}%</div>`;
+                }
+                cells.push(`<td class="report-cell${partialCls}">${html}</td>`);
+            });
+            cells.push(`<td class="report-stat">${this._fmtMoney(r.avg)}</td>`);
+            cells.push(`<td class="report-stat">${this._fmtMoney(r.min)}</td>`);
+            cells.push(`<td class="report-stat">${this._fmtMoney(r.max)}</td>`);
+            return `<tr>${cells.join('')}</tr>`;
+        }).join('');
+        tbody.innerHTML = rowsHtml ||
+            `<tr><td colspan="${model.periods.length + 4}" class="report-note">Нет данных в выбранном диапазоне.</td></tr>`;
+    }
+
+    static exportReportCSV() {
+        if (!this._lastReport) this.renderReports();
+        const res = ExportUtils.exportReportToCSV(this._lastReport);
+        if (!res || !res.success) {
+            alert('Нет данных для экспорта');
+        }
+    }
+
+    static _escapeHtml(s) {
+        return String(s === null || s === undefined ? '' : s)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
     }
 }
 
