@@ -321,6 +321,39 @@ export class ExportUtils {
     static sumExpenses(expenses) {
         return expenses.reduce((sum, exp) => sum + exp.amountEUR, 0).toFixed(2);
     }
+
+    /**
+     * Export the reports table (facts per period + avg/min/max) to CSV.
+     */
+    static exportReportToCSV(model) {
+        if (!model || !Array.isArray(model.periods) || !Array.isArray(model.rows)) {
+            return { success: false };
+        }
+        const esc = v => {
+            const s = (v === null || v === undefined) ? '' : String(v);
+            return /[",\n;]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+        };
+        const headers = ['Категория', ...model.periods.map(p => p.label), 'Среднее', 'Мин', 'Макс'];
+        const rows = model.rows.map(r => {
+            const cells = model.periods.map(p => {
+                const c = r.cells[p.key];
+                return (c && c.fact !== null && c.fact !== undefined) ? c.fact.toFixed(2) : '';
+            });
+            return [
+                r.name,
+                ...cells,
+                r.avg !== null && r.avg !== undefined ? r.avg.toFixed(2) : '',
+                r.min !== null && r.min !== undefined ? r.min.toFixed(2) : '',
+                r.max !== null && r.max !== undefined ? r.max.toFixed(2) : ''
+            ];
+        });
+        const csv = [headers.map(esc).join(','), ...rows.map(row => row.map(esc).join(','))].join('\n');
+        const bom = '\uFEFF';
+        const blob = new Blob([bom + csv], { type: 'text/csv;charset=utf-8;' });
+        this.downloadFile(blob, `budget_report_${new Date().toISOString().split('T')[0]}.csv`);
+        console.log('✅ Отчёт по периодам экспортирован в CSV');
+        return { success: true };
+    }
 }
 
 export default ExportUtils;
